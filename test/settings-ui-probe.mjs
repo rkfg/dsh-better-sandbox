@@ -106,6 +106,10 @@ const filled = await evaluate(`
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
   setter.call(areas[0], "/tmp/ok-dir\\nrelative/path\\n~root/keys\\n/tmp/ok-dir")
   areas[0].dispatchEvent(new Event('input', { bubbles: true }))
+  // поле имён путей: .git — корректное правило, сегмент с разделителем — нет
+  const last = areas[areas.length - 1]
+  setter.call(last, ".git\\nnested/.git")
+  last.dispatchEvent(new Event('input', { bubbles: true }))
   return { areas: areas.length }`)
 await sleep(800)
 
@@ -124,6 +128,8 @@ const verdict = await evaluate(`
     tildeUser: grab(/~user form is not supported|不支持 ~user/i),
     duplicate: grab(/repeated rule|规则重复/i),
     blocked: grab(/some lines are unusable|部分条目无法使用/i),
+    segment: grab(/expected one path name|期望单个路径名/i),
+    raw: text.slice(0, 4000),
   }`)
 
 const failures = []
@@ -132,12 +138,14 @@ if (settings !== true) failures.push('не открылся диалог нас�
 if (section !== true) failures.push('не найден раздел Sandbox в настройках')
 if (filled.areas === 0) failures.push('в разделе нет полей ввода')
 if (saved !== true) failures.push('не найдена кнопка Save')
-for (const key of ['relative', 'tildeUser', 'duplicate', 'blocked']) {
+for (const key of ['relative', 'tildeUser', 'duplicate', 'blocked', 'segment']) {
   if (verdict[key] === null) failures.push(`под подпись «${key}» не появилась`)
 }
 
 console.log('открыт раздел:', section, '| полей:', filled.areas, '| нажато Save:', saved)
 console.log('подписи:', JSON.stringify(verdict))
+const gitFlagged = String(verdict.raw ?? '').split(String.fromCharCode(10)).some((line) => /needs an absolute path|需要绝对路径/.test(line) && line.includes('.git'))
+if (gitFlagged) failures.push('правило .git в поле имён помечено как неверное')
 if (failures.length === 0) console.log('проверка пройдена: непригодные правила подсвечены красным, сохранение заблокировано')
 else console.log('проверка провалена: ' + failures.join('; '))
 cleanup()

@@ -164,6 +164,9 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
           - $DSH_HOME/allowed
         readDenyDirs:
           - $DSH_HOME/run/secretdir
+        denySegments:
+          - .git
+          - nested/.git
         readDenyFiles:
           - $DSH_HOME/secretfile.txt
           - $DSH_HOME/run/../nonexistent-secret

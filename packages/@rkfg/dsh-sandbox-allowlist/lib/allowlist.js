@@ -174,7 +174,12 @@ export default class SandboxAllowlist extends Service {
     const rejected = []
     const lists = {
       roots: this.collectDirs(this.liveList(config.writableDirs), this.selfPaths, 'writableDirs', rejected),
-      denySegments: this.liveList(config.denySegments),
+      denySegments: this.liveList(config.denySegments).filter((segment) => {
+        if (typeof segment === 'string' && segment !== '' && !segment.includes('/') && segment !== '.' && segment !== '..' && !segment.startsWith('~')) return true
+        this.ctx.logger.warn(`sandbox-allowlist: denySegments: нужно одно имя пути, пропущено ${JSON.stringify(segment)}`)
+        rejected.push({ field: 'denySegments', entry: segment, reason: 'segment' })
+        return false
+      }),
       readDirs: this.collectDirs(this.liveList(config.readDenyDirs), this.selfPaths, 'readDenyDirs', rejected),
       readFiles: this.collectFiles(this.liveList(config.readDenyFiles), 'readDenyFiles', rejected),
       rejected,

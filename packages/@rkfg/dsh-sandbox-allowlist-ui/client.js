@@ -21,10 +21,10 @@ window.__ModuleLoader__.load({
 
 		const NS = "sandbox-allowlist"
 		const FIELDS = [
-			{ key: "writableDirs", hintKey: "hintWritableDirs" },
-			{ key: "readDenyDirs", hintKey: "hintReadDenyDirs" },
-			{ key: "readDenyFiles", hintKey: "hintReadDenyFiles" },
-			{ key: "denySegments", hintKey: "hintDenySegments" },
+			{ key: "writableDirs", hintKey: "hintWritableDirs", kind: "path" },
+			{ key: "readDenyDirs", hintKey: "hintReadDenyDirs", kind: "path" },
+			{ key: "readDenyFiles", hintKey: "hintReadDenyFiles", kind: "path" },
+			{ key: "denySegments", hintKey: "hintDenySegments", kind: "segment" },
 		]
 
 		const style = {
@@ -43,21 +43,26 @@ window.__ModuleLoader__.load({
 		const toLines = (text) => text.split("\n").map((line) => line.trim()).filter((line) => line !== "")
 
 		/**
-		 * Проверка строки правила силами браузера: абсолютный путь или форма ~/…,
-		 * отсутствие ~user и дубликатов. Существование пути браузер проверить не может
-		 * (из страницы в сервис плагина дорога нет), поэтому за этим — хост: там правило
-		 * попадает в `rejected` с причиной `missing`.
+		 * Проверка строки правила силами браузера. У полей двух родов свои правила:
+		 * путь обязан быть абсолютным или в форме ~/… (сегмент `~user` не поддерживается),
+		 * а имя пути — одним компонентом без разделителей и без `~`. Дубликаты ловятся в
+		 * обоих. Существование пути браузер проверить не может (из страницы в сервис
+		 * плагина дорога нет), поэтому за этим — хост: там правило попадает в `rejected`
+		 * с причиной `missing`.
 		 *
 		 * @param text - содержимое поля, по строке на правило.
+		 * @param kind - `path` для путей и `segment` для имён компонентов пути.
 		 * @returns список проблем: { entry, reason }.
 		 */
-		const checkLines = function (text) {
+		const checkLines = function (text, kind) {
 			const problems = []
 			const seen = new Set()
 			for (const raw of String(text).split("\n")) {
 				const line = raw.trim()
 				if (line === "") continue
-				if (line !== "~" && !line.startsWith("~/")) {
+				if (kind === "segment") {
+					if (line.includes("/") || line === "." || line === ".." || line.startsWith("~")) problems.push({ entry: line, reason: "segment" })
+				} else if (line !== "~" && !line.startsWith("~/")) {
 					if (line.startsWith("~")) problems.push({ entry: line, reason: "tildeUser" })
 					else if (!line.startsWith("/")) problems.push({ entry: line, reason: "relative" })
 				}
@@ -94,7 +99,7 @@ window.__ModuleLoader__.load({
 						for (const field of FIELDS) values[field.key] = lines(value[field.key])
 						setDrafts(values)
 						const found = {}
-						for (const field of FIELDS) found[field.key] = checkLines(values[field.key])
+						for (const field of FIELDS) found[field.key] = checkLines(values[field.key], field.kind)
 						setIssues(found)
 						setError("")
 						setStatus(t("revision") + " " + descriptor.revision)
@@ -116,7 +121,7 @@ window.__ModuleLoader__.load({
 				const found = {}
 				let broken = 0
 				for (const field of FIELDS) {
-					found[field.key] = checkLines(drafts[field.key])
+					found[field.key] = checkLines(drafts[field.key], field.kind)
 					broken += found[field.key].length
 				}
 				setIssues(found)
@@ -172,7 +177,7 @@ window.__ModuleLoader__.load({
 									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = value; return next })())
 								})
 								setIssues(function (prev) {
-									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = checkLines(value); return next })())
+									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = checkLines(value, field.kind); return next })())
 								})
 							},
 						}),
@@ -223,6 +228,7 @@ window.__ModuleLoader__.load({
 					badRelative: "needs an absolute path or ~/…",
 					badTildeUser: "~user form is not supported, use ~/…",
 					badDuplicate: "repeated rule",
+					badSegment: "expected one path name, for example .git",
 				},
 				zh: {
 					nav: "沙盒",
@@ -246,6 +252,7 @@ window.__ModuleLoader__.load({
 					badRelative: "需要绝对路径或 ~/…",
 					badTildeUser: "不支持 ~user 形式，请使用 ~/…",
 					badDuplicate: "规则重复",
+					badSegment: "期望单个路径名，例如 .git",
 				},
 			})
 			const t = ctx.locale.bind("settings.sandbox")

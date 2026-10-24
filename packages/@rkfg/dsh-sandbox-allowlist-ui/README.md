@@ -26,8 +26,11 @@ Per `cookbook/adding-a-remote-api.md`, a client consuming a plugin namespace mus
 ## Validation
 
 The form checks each line before saving and refuses to write while a field has
-problems, listing them in red under that field: a path that is neither absolute
-nor `~/…`, the unsupported `~user` form, and a rule repeated in the same field.
+problems, listing them in red under that field. Two kinds of fields have two kinds
+of rules: path fields need an absolute path or `~/…` (and reject the `~user` form),
+while the protected-names field expects a single component such as `.git` — a name
+with a separator there is an error, and `.git` itself is correct. Duplicates inside
+one field are rejected in both kinds.
 Existence is deliberately not checked here — the browser cannot reach the plugin
 service — so a rule for a directory that does not exist yet is accepted and stays
 inert until it appears. `test/settings-ui-probe.mjs` drives this in a real

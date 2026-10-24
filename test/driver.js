@@ -121,25 +121,25 @@ export async function apply(ctx) {
       `${label}: exit=${result.status} denial-signature=${signatures.some((signature) => stderr.includes(signature))} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
     )
   }
-  // regression: an external process wiped the mask's zero-byte placeholders (as a
-  // package reinstall does) — confine must keep working, the mask must restore itself
+  // regression: an external process wiped the mode-000 mask stubs (as a package
+  // reinstall does) — confine must keep working, the mask must restore itself
   const maskDir = allow?.mask?.dir
   if (maskDir === void 0) {
     out.push('no mask was created — mask regression skipped')
   } else {
-    // remove the placeholders ourselves: rmdir on a 000 directory needs no access
+    // delete the stubs ourselves: rmdir on a 000 directory needs no access
     // inside it, so this is the same outcome as deleting the whole package folder
     try { chmodSync(maskDir, 0o755) } catch {}
     rmSync(maskDir, { recursive: true, force: true })
     if (allow.mask.file !== void 0) rmSync(allow.mask.file, { force: true })
-    out.push(`external removal of the placeholders: mask exists=${existsSync(maskDir)}`)
+    out.push(`external removal of the mask stubs: mask exists=${existsSync(maskDir)}`)
     const after = [...args]
     after[2] = `touch ${cwd}/.git/post-mask-probe.txt`
     const confined = await ctx.sandbox.confine(after, policy)
     const result = spawnSync(confined.argv[0], confined.argv.slice(1), { encoding: 'utf8', cwd })
     const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
     out.push(
-      `command without the placeholders: exit=${result.status} bwrap-denial=${stderr.includes("can't find source path")} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-80)}`,
+      `command without the mask stubs: exit=${result.status} bwrap-denial=${stderr.includes("can't find source path")} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-80)}`,
     )
     out.push(`mask self-healing: exists=${existsSync(maskDir)}`)
   }

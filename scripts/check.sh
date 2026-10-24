@@ -142,6 +142,59 @@ sys.exit(1 if problems else 0)
 WS
 workspace_status=$?
 
+# The harness family is versioned per package: cordis, cosmokit and schemastery
+# carry their own numbers, only dsh-* follow the harness release. A pin copied
+# from the harness version does not exist in the registry, and `dsh plugin add`
+# fails with ERR_PNPM_NO_MATCHING_VERSION. Every imported package must also be
+# declared by the package that imports it.
+echo
+echo "### dependency pins"
+python3 - "$root" <<'DEPS'
+import json, pathlib, re, subprocess, sys
+root = pathlib.Path(sys.argv[1])
+imported = re.compile(r"from '(@deepseek-ai/[a-z-]+)'")
+problems, notes = [], []
+cache = {}
+
+
+def published(name, version):
+    if (name, version) in cache:
+        return cache[(name, version)]
+    result = subprocess.run(['npm', 'view', name, 'versions', '--json'], capture_output=True, text=True)
+    if result.returncode != 0:
+        cache[(name, version)] = None
+        return None
+    try:
+        versions = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        cache[(name, version)] = None
+        return None
+    versions = versions if isinstance(versions, list) else [versions]
+    cache[(name, version)] = version in versions
+    return cache[(name, version)]
+
+
+for pkg in ('@rkfg/dsh-better-sandbox', '@rkfg/dsh-better-sandbox-ui'):
+    box = root / 'packages' / pkg
+    declared = json.loads((box / 'package.json').read_text()).get('dependencies', {})
+    used = set()
+    for source in list(box.glob('*.js')) + list((box / 'lib').glob('*.js')):
+        used |= set(imported.findall(source.read_text()))
+    for name in sorted(used - set(declared)):
+        problems.append(f'{pkg}: imports {name} but does not declare it')
+    for name, version in sorted(declared.items()):
+        answer = published(name, version)
+        if answer is None:
+            notes.append(f'{pkg}: {name}@{version} not checked (registry unavailable)')
+        elif not answer:
+            problems.append(f'{pkg}: {name}@{version} does not exist in the registry')
+for note in notes:
+    print(f'note: {note}')
+print('no problems' if not problems else '\n'.join(problems))
+sys.exit(1 if problems else 0)
+DEPS
+dependency_status=$?
+
 echo
 echo "### manifests and patch-layer references"
 python3 - "$root" <<'META'
@@ -312,4 +365,4 @@ echo
 echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git)"
 run_profile allowtest
 
-exit $((manifest_status || language_status || table_status || russian_status || workspace_status))
+exit $((manifest_status || language_status || table_status || russian_status || workspace_status || dependency_status))

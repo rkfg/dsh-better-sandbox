@@ -1,6 +1,6 @@
 {
   "name": "@rkfg/dsh-better-sandbox",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names, read-protected paths.",
   "dsh": {
@@ -22,12 +22,15 @@
     "./rules": "./lib/rules.js"
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "0.2.1-rc.2",
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/cosmokit": "1.8.6",
+    "@deepseek-ai/dsh-fs": "0.2.1-rc.2",
     "@deepseek-ai/dsh-fs-sandbox": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-rc.2",
     "@deepseek-ai/dsh-sandbox-local": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.2",
-    "@deepseek-ai/cosmokit": "0.2.1-rc.2"
+    "@deepseek-ai/schemastery": "3.18.5"
   },
   "icon": "./icon.svg",
   "files": [

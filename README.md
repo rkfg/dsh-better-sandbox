@@ -49,6 +49,8 @@ From a working tree, with the mask stubs and a profile `package.json` backup han
 ./scripts/install.sh --profile web
 ```
 
+Two things to expect when installing from npm inside a running session. pnpm keeps a content-addressed store in `~/.local/share/pnpm`, which is outside the workspace and therefore read-only to a confined command — add it to `writableDirs` or run the install in a plain terminal. And the harness cannot read `~/.npmrc` while this plugin protects it, so a private registry needs the install to happen outside the sandbox; public packages are unaffected.
+
 Then put the rule values in `~/.dsh/profiles/web/cordis.patch.yml`. The bundle layer of the package already declares the entries and disables the built-in providers it replaces, so the profile only carries values:
 
 ```yaml

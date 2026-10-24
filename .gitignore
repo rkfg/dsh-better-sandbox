@@ -1,5 +1,6 @@
 # local verification contour: profiles, fixtures, logs
 .dsh-test/
+.dsh-test-npm/
 
 # install artifacts
 node_modules/

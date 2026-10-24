@@ -1,6 +1,6 @@
 {
   "name": "@rkfg/dsh-better-sandbox-ui",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Settings page for the DeepSeek Harness better-sandbox plugin; edits apply without a restart.",
   "dsh": {
@@ -26,7 +26,7 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "0.2.1-rc.2"
+    "@deepseek-ai/cordis": "4.0.5"
   },
   "icon": "./icon.svg",
   "files": [

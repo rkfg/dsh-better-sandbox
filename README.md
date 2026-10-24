@@ -123,8 +123,12 @@ scripts/check.sh                      headless contour with generated fixtures
 scripts/webfull.sh                    web contour, probes, `serve` for browser debugging
 scripts/page-check.sh                 boots the web profile and loads it in a headless browser
 scripts/lint.sh                       node --check over every module
+.github/workflows/ci.yml              syntax, contour, YAML, language and page checks on every push
+.github/workflows/publish.yml         a version tag publishes both packages through npm trusted publishing
 test/                                 driver and probes used by the contours
 ```
+
+A release is a tag push: set the same `version` in both packages, tag the commit `v<version>`, and `publish.yml` runs the contour, refuses a tag that disagrees with the manifests, and publishes both packages with provenance. It authenticates through OIDC, so no npm token is involved; the trusted publisher (user `rkfg`, this repository, workflow file `publish.yml`) is configured once on each package's settings page, and a freshly created trusted publisher must complete its first publish within two days or it expires.
 
 Code, comments and script output are English; `check.sh` fails when Cyrillic shows up anywhere outside `locale/*.json` and the Russian README copies. The page locales are `en` and `zh`, which is what the pinned harness release supports.
 

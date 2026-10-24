@@ -1,0 +1,64 @@
+name: publish
+
+# A version tag is the release trigger: push v0.2.1 and both packages go to npm.
+# No npm token is used — the job authenticates with OIDC (npm trusted publishing),
+# which also produces provenance attestations for the published tarballs.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      HARNESS_VERSION: 0.2.1-rc.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Sandbox tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          bwrap --version
+
+      - name: Install the harness CLI
+        run: npm install --global @deepseek-ai/dsh@${{ env.HARNESS_VERSION }}
+
+      - name: Run the contour before publishing
+        run: |
+          bash scripts/lint.sh
+          bash scripts/check.sh
+
+      # The tag must name the version being published: a mismatch would push a
+      # tarball no tag points at, and npm versions cannot be reused.
+      - name: Tag matches the package version
+        run: |
+          node -e '
+            const fs = require("fs")
+            const tag = process.env.GITHUB_REF_NAME.replace(/^v/, "")
+            for (const pkg of ["@rkfg/dsh-better-sandbox", "@rkfg/dsh-better-sandbox-ui"]) {
+              const file = `packages/${pkg}/package.json`
+              const version = JSON.parse(fs.readFileSync(file, "utf8")).version
+              if (version !== tag) {
+                console.error(`${file}: version ${version} does not match the tag v${tag}`)
+                process.exit(1)
+              }
+            }
+            console.log(`publishing ${tag}`)
+          '
+
+      - name: Publish both packages
+        run: |
+          npm publish --workspace @rkfg/dsh-better-sandbox --access public --provenance
+          npm publish --workspace @rkfg/dsh-better-sandbox-ui --access public --provenance

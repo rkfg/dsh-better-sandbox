@@ -123,6 +123,25 @@ sys.exit(1 if problems else 0)
 WORDS
 russian_status=$?
 
+# `npm publish --workspace <name>` only finds a package when the root workspaces
+# glob reaches it, so a moved directory has to stay inside the glob.
+echo
+echo "### workspace wiring"
+python3 - "$root" <<'WS'
+import glob, json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+patterns = json.loads((root / 'package.json').read_text()).get('workspaces', [])
+covered = {str(pathlib.Path(m).resolve()) for pattern in patterns for m in glob.glob(str(root / pattern))}
+found = {str(path.parent.resolve()): path.parent.name for path in root.glob('packages/**/package.json')}
+problems = []
+for directory, name in sorted(found.items()):
+    if directory not in covered:
+        problems.append(f'{pathlib.Path(directory).relative_to(root)} ({name}) is outside the workspaces globs {patterns}')
+print('no problems' if not problems else '\n'.join(problems))
+sys.exit(1 if problems else 0)
+WS
+workspace_status=$?
+
 echo
 echo "### manifests and patch-layer references"
 python3 - "$root" <<'META'
@@ -293,4 +312,4 @@ echo
 echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git)"
 run_profile allowtest
 
-exit $((manifest_status || language_status || table_status || russian_status))
+exit $((manifest_status || language_status || table_status || russian_status || workspace_status))

@@ -93,7 +93,7 @@ const rows = bundle
       '      name: ./sandbox-allowlist/subprocess.js',
     ]
 
-const probes = { driver: 'driver', 'settings-write': 'settings-write-probe', loader: 'loader-probe' }
+const probes = { driver: 'driver', 'settings-write': 'settings-write-probe', 'revision': 'revision-probe', loader: 'loader-probe' }
 if (probes[probe] !== void 0) {
   const file = `${probes[probe]}.js`
   fs.copyFileSync(path.join(root, 'test', file), path.join(prof, 'sandbox-allowlist', file))

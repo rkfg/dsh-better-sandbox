@@ -1,5 +1,5 @@
 {
-  "name": "dsh-sandbox-allowlist",
+  "name": "@rkfg/dsh-sandbox-allowlist",
   "version": "0.1.0",
   "type": "module",
   "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names, read-protected paths.",
@@ -41,12 +41,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rkfg/dsh-sandbox-allowlist.git",
-    "directory": "packages/dsh-sandbox-allowlist"
+    "directory": "packages/@rkfg/dsh-sandbox-allowlist"
   },
   "bugs": {
     "url": "https://github.com/rkfg/dsh-sandbox-allowlist/issues"
   },
-  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/dsh-sandbox-allowlist",
+  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/@rkfg/dsh-sandbox-allowlist",
   "keywords": [
     "deepseek-harness",
     "dsh",

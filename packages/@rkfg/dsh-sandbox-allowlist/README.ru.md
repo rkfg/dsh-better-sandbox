@@ -1,4 +1,4 @@
-# dsh-sandbox-allowlist
+# @rkfg/dsh-sandbox-allowlist
 
 Бандл DSH: расширяет песочницу additional-корнями на запись, запрещает изменять
 `.git` и закрывает от чтения каталоги и файлы с секретами. Работает в трёх
@@ -25,8 +25,8 @@
 
 Правила правятся в веб-UI: диалог настроек → раздел «Песочница» (четыре поля, по
 строке на путь) → «Сохранить». Раздел приносит отдельный бандл
-`dsh-sandbox-allowlist-ui`: пакет с клиентской половиной обязан иметь ровно одну
-запись загрузчика, поэтому он не может жить внутри `dsh-sandbox-allowlist`.
+`@rkfg/dsh-sandbox-allowlist-ui`: пакет с клиентской половиной обязан иметь ровно одну
+запись загрузчика, поэтому он не может жить внутри `@rkfg/dsh-sandbox-allowlist`.
 
 Клиентский рукав регистрирует слот `settings.section` и работает через штатный
 слой настроек: `ctx.remote.settings.describe()` (без аргументов, ответ —
@@ -63,7 +63,7 @@
 
 ```yaml
 - id: sandbox-allowlist
-  name: dsh-sandbox-allowlist/allowlist
+  name: '@rkfg/dsh-sandbox-allowlist/allowlist'
   config:
     writableDirs: ["/opt/go", "/home/you/.cache"]
     readDenyDirs: ["/home/you/.ssh", "/home/you/.aws"]

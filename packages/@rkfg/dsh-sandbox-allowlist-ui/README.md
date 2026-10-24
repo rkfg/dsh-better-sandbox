@@ -1,4 +1,4 @@
-# dsh-sandbox-allowlist-ui
+# @rkfg/dsh-sandbox-allowlist-ui
 
 Settings section **Sandbox** for the sandbox-allowlist plugin: four text areas (one path per line) for write grants, read-protected directories, read-protected files and protected path names. Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules without a restart. Russian copy: [README.ru.md](README.ru.md).
 
@@ -25,7 +25,7 @@ Per `cookbook/adding-a-remote-api.md`, a client consuming a plugin namespace mus
 
 ### Influence on the model context
 
-Indirectly, through `dsh-sandbox-allowlist`: the lists saved here decide which announcement lines reach the runtime context and which paths produce read refusals.
+Indirectly, through `@rkfg/dsh-sandbox-allowlist`: the lists saved here decide which announcement lines reach the runtime context and which paths produce read refusals.
 
 #### Token effect
 
@@ -33,7 +33,7 @@ Zero-direct: the section itself adds nothing to the model context.
 
 #### KV Cache effect
 
-Independent: prefix reuse is affected only by the announcement block owned by `dsh-sandbox-allowlist`.
+Independent: prefix reuse is affected only by the announcement block owned by `@rkfg/dsh-sandbox-allowlist`.
 
 ## Known Limitations and Deferred Work
 

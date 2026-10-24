@@ -1,5 +1,5 @@
 {
-  "name": "dsh-sandbox-allowlist-ui",
+  "name": "@rkfg/dsh-sandbox-allowlist-ui",
   "version": "0.1.0",
   "type": "module",
   "description": "Settings page for the DeepSeek Harness sandbox-allowlist plugin; edits apply without a restart.",
@@ -41,12 +41,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rkfg/dsh-sandbox-allowlist.git",
-    "directory": "packages/dsh-sandbox-allowlist-ui"
+    "directory": "packages/@rkfg/dsh-sandbox-allowlist-ui"
   },
   "bugs": {
     "url": "https://github.com/rkfg/dsh-sandbox-allowlist/issues"
   },
-  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/dsh-sandbox-allowlist-ui",
+  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/@rkfg/dsh-sandbox-allowlist-ui",
   "keywords": [
     "deepseek-harness",
     "dsh",

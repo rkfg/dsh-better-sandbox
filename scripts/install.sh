@@ -6,7 +6,7 @@
 #   ./scripts/install.sh                                  # профиль web
 #   ./scripts/install.sh --home <dir> --profile <имя>     # другой DSH_HOME/профиль
 #
-# Штатная установка плагина — `dsh plugin --profile <name> add dsh-sandbox-allowlist`.
+# Штатная установка плагина — `dsh plugin --profile <name> add @rkfg/dsh-sandbox-allowlist`.
 # Этот скрипт нужен для установки из рабочего дерева: он проверяет синтаксис,
 # делает копию package.json профиля и пересоздаёт нулёвки маски, которые
 # запущенный харнесс передаёт в bwrap как пути-источники.
@@ -23,11 +23,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-src="$root/packages/dsh-sandbox-allowlist"
-uipkg="$root/packages/dsh-sandbox-allowlist-ui"
+src="$root/packages/@rkfg/dsh-sandbox-allowlist"
+uipkg="$root/packages/@rkfg/dsh-sandbox-allowlist-ui"
 prof="$home/profiles/$profile"
-dst="$prof/node_modules/dsh-sandbox-allowlist"
-uirst="$prof/node_modules/dsh-sandbox-allowlist-ui"
+dst="$prof/node_modules/@rkfg/dsh-sandbox-allowlist"
+uirst="$prof/node_modules/@rkfg/dsh-sandbox-allowlist-ui"
 [[ -d "$prof" ]] || { echo "нет профиля: $prof" >&2; exit 1; }
 
 bash "$root/scripts/lint.sh" || exit 1
@@ -37,7 +37,7 @@ if [[ -e "$dst" ]]; then
   rm -rf "$dst"
   echo "обновлена предыдущая установка (версия $prev)"
 fi
-mkdir -p "$prof/node_modules"
+mkdir -p "$prof/node_modules/@rkfg"
 cp -r "$src" "$dst"
 rm -rf "$dst/lib/.mask"
 
@@ -61,7 +61,7 @@ const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
 pkg.dsh ??= {}
 pkg.dsh.profile ??= {}
 pkg.dsh.profile.bundles ??= []
-const wanted = ['dsh-sandbox-allowlist', 'dsh-sandbox-allowlist-ui']
+const wanted = ['@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui']
 const missing = wanted.filter((name) => !pkg.dsh.profile.bundles.includes(name))
 if (missing.length === 0) {
   console.log('обе коробки уже в bundles')
@@ -77,5 +77,5 @@ NODE
 
 echo "установлено: $dst"
 echo "установлено: $uirst"
-echo 'в профиле достаточно значений: - id: sandbox-allowlist / name: dsh-sandbox-allowlist/allowlist / config: { writableDirs: [...], readDenyDirs: [...], readDenyFiles: [...], denySegments: [...] }'
+echo "в профиле достаточно значений: - id: sandbox-allowlist / name: '@rkfg/dsh-sandbox-allowlist/allowlist' / config: { writableDirs: [...], readDenyDirs: [...], readDenyFiles: [...], denySegments: [...] }"
 echo 'нужен рестарт профиля'

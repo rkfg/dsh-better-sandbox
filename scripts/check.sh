@@ -11,8 +11,8 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export DSH_HOME="$root/.dsh-test"
 profiles="$DSH_HOME/profiles"
-src="$root/packages/dsh-sandbox-allowlist/lib"
-ui="$root/packages/dsh-sandbox-allowlist-ui"
+src="$root/packages/@rkfg/dsh-sandbox-allowlist/lib"
+ui="$root/packages/@rkfg/dsh-sandbox-allowlist-ui"
 
 command -v dsh >/dev/null || { echo "нужен CLI харнесса: npm install --global @deepseek-ai/dsh" >&2; exit 1; }
 command -v bwrap >/dev/null || { echo "нужен bubblewrap (bwrap) для confinement-проверок" >&2; exit 1; }
@@ -27,7 +27,7 @@ import json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 max_icon = 256 * 1024
 problems = []
-for pkg in ('dsh-sandbox-allowlist', 'dsh-sandbox-allowlist-ui'):
+for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
     box = root / 'packages' / pkg
     data = json.loads((box / 'package.json').read_text())
     exports = data.get('exports', {})
@@ -63,13 +63,11 @@ for pkg in ('dsh-sandbox-allowlist', 'dsh-sandbox-allowlist-ui'):
         if needed not in files:
             problems.append(f'{pkg}: в files нет {needed}')
     patch = box / 'cordis.patch.yml'
+    prefix = data['name'] + '/'
     for name in set(re.findall(r'name:\s*([\w@/-]+)', patch.read_text())):
-        if '/' not in name or name.startswith('@'):
+        if not name.startswith(prefix):
             continue
-        pkg_name, _, sub = name.partition('/')
-        if pkg_name != data['name']:
-            continue
-        key = './' + sub
+        key = './' + name[len(prefix):]
         target = exports.get(key)
         if target is None:
             problems.append(f'{pkg}: patch ссылается на {key}, а в exports нет')
@@ -79,6 +77,26 @@ print('проблем нет' if not problems else '\n'.join(problems))
 sys.exit(1 if problems else 0)
 META
 manifest_status=$?
+
+echo
+echo "### YAML patch-слоёв"
+python3 - "$root" <<'YAML'
+import pathlib, sys
+import yaml
+root = pathlib.Path(sys.argv[1])
+problems = []
+for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
+    path = root / 'packages' / pkg / 'cordis.patch.yml'
+    try:
+        rows = yaml.safe_load(path.read_text())
+        if not isinstance(rows, list) or not rows:
+            problems.append(f'{pkg}: patch-слой пуст или не список')
+    except Exception as error:
+        problems.append(f'{pkg}: {error}')
+print('проблем нет' if not problems else '\n'.join(problems))
+sys.exit(1 if problems else 0)
+YAML
+[[ $? -eq 0 ]] || manifest_status=1
 
 # --- профили контура: собираются заново при каждом прогоне ---
 make_profile() {

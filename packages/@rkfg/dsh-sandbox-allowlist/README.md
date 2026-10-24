@@ -1,4 +1,4 @@
-# dsh-sandbox-allowlist (host bundle)
+# @rkfg/dsh-sandbox-allowlist (host bundle)
 
 Host half of the sandbox rules plugin: the service that owns the rule lists, the three provider subclasses that enforce them, and a small Remote service that reports the effective state. Russian copy: [README.ru.md](README.ru.md).
 
@@ -19,7 +19,7 @@ Profile configuration stays to values only:
 
 ```yaml
 - id: sandbox-allowlist
-  name: dsh-sandbox-allowlist/allowlist
+  name: '@rkfg/dsh-sandbox-allowlist/allowlist'
   config:
     writableDirs: [...]
     denySegments: [...]

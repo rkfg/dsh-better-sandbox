@@ -1,4 +1,4 @@
-# dsh-sandbox-allowlist: песочница с дополнительными корнями на запись, защитой
+# @rkfg/dsh-sandbox-allowlist: песочница с дополнительными корнями на запись, защитой
 # .git от изменений и защитой секретов от чтения.
 #
 # Значения списков (writableDirs, readDenyDirs, readDenyFiles) намеренно НЕ здесь:
@@ -15,12 +15,12 @@
   disabled: true
 - insert:
     - id: sandbox-allowlist
-      name: dsh-sandbox-allowlist/allowlist
+      name: '@rkfg/dsh-sandbox-allowlist/allowlist'
     - id: fs-allowlist
-      name: dsh-sandbox-allowlist/fs
+      name: '@rkfg/dsh-sandbox-allowlist/fs'
     - id: sandbox-allowlist-runner
-      name: dsh-sandbox-allowlist/runner
+      name: '@rkfg/dsh-sandbox-allowlist/runner'
     - id: subprocess-guard
-      name: dsh-sandbox-allowlist/subprocess
+      name: '@rkfg/dsh-sandbox-allowlist/subprocess'
     - id: sandbox-guard-api
-      name: dsh-sandbox-allowlist/guard-api
+      name: '@rkfg/dsh-sandbox-allowlist/guard-api'

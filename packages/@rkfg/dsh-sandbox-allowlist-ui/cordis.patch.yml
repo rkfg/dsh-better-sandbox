@@ -1,0 +1,4 @@
+# @rkfg/dsh-sandbox-allowlist-ui: раздел настроек правил песочницы в веб-UI.
+- insert:
+    - id: sandbox-allowlist-ui
+      name: '@rkfg/dsh-sandbox-allowlist-ui'

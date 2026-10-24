@@ -17,16 +17,16 @@ port=${DSH_TEST_PORT:-3181}
 rm -rf "$prof"
 mkdir -p "$prof" "$DSH_HOME/logs"
 echo '[]' > "$prof/cordis.yml"
-cp -r "$root/packages/dsh-sandbox-allowlist/lib" "$prof/sandbox-allowlist"
+cp -r "$root/packages/@rkfg/dsh-sandbox-allowlist/lib" "$prof/sandbox-allowlist"
 printf '{"type":"module"}\n' > "$prof/sandbox-allowlist/package.json"
 
 if [[ -n ${DSH_UI:-} ]]; then
-  mkdir -p "$prof/node_modules"
-  cp -r "$root/packages/dsh-sandbox-allowlist-ui" "$prof/node_modules/dsh-sandbox-allowlist-ui"
+  mkdir -p "$prof/node_modules/@rkfg"
+  cp -r "$root/packages/@rkfg/dsh-sandbox-allowlist-ui" "$prof/node_modules/@rkfg/dsh-sandbox-allowlist-ui"
 fi
 if [[ -n ${DSH_BUNDLE:-} ]]; then
-  mkdir -p "$prof/node_modules"
-  cp -r "$root/packages/dsh-sandbox-allowlist" "$prof/node_modules/dsh-sandbox-allowlist"
+  mkdir -p "$prof/node_modules/@rkfg"
+  cp -r "$root/packages/@rkfg/dsh-sandbox-allowlist" "$prof/node_modules/@rkfg/dsh-sandbox-allowlist"
 fi
 
 node - "$prof" "$root" <<'NODE'
@@ -47,8 +47,8 @@ const pkg = {
       bundles: [
         '@deepseek-ai/dsh-base',
         '@deepseek-ai/dsh-web-app',
-        ...(bundle ? ['dsh-sandbox-allowlist'] : []),
-        ...(process.env.DSH_UI ? ['dsh-sandbox-allowlist-ui'] : []),
+        ...(bundle ? ['@rkfg/dsh-sandbox-allowlist'] : []),
+        ...(process.env.DSH_UI ? ['@rkfg/dsh-sandbox-allowlist-ui'] : []),
       ],
     },
   },
@@ -68,7 +68,7 @@ const rows = bundle
       '# состав записей и отключение базовых провайдеров — в patch-слое бандла,',
       '# здесь только значения списков (так их пишет страница настроек).',
       '- id: sandbox-allowlist',
-      '  name: dsh-sandbox-allowlist/allowlist',
+      "  name: '@rkfg/dsh-sandbox-allowlist/allowlist'",
       ...lists('  '),
     ]
   : [

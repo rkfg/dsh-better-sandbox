@@ -1,8 +1,8 @@
 /**
- * Драйвер-проверка: вызывает те же seams, что и инструменты (ctx.fs.readText /
- * listDir / stat / writeText, ctx.sandbox.confine + spawn), и печатает исходы.
- * Отдельно отмечается, попал ли отказ в denial-сигнатуру раннера — только тогда
- * инструмент bash показывает политический маркер с подсказкой об эскалации.
+ * Verification driver: calls the same seams the tools use (ctx.fs.readText /
+ * listDir / stat / writeText, ctx.sandbox.confine + spawn) and prints outcomes.
+ * A denial that lands in the runner's denial signature is marked separately —
+ * only then does the bash tool show the policy marker with the escalation hint.
  *
  * @module dsh-sandbox-allowlist/driver
  */
@@ -47,8 +47,8 @@ const BASH_CASES = [
 
 const RG_CASES = [
   ['rg --files inside secret dir', ['--files', 'secretdir']],
-  ['rg search secret content', ['-e', 'СЕКРЕТ', 'secretdir']],
-  ['rg --files cwd (регрессия)', ['--files', 'normal']],
+  ['rg search secret content', ['-e', 'SECRET', 'secretdir']],
+  ['rg --files cwd (regression)', ['--files', 'normal']],
 ]
 
 const pathOf = (cwd, rel) => new URL(`file://${cwd}/${rel}`).pathname
@@ -62,15 +62,15 @@ export async function apply(ctx) {
   out.push(`policy: mode=${policy.mode} root=${policy.workspaceRoot}`)
   out.push(`write roots: ${JSON.stringify(allow?.roots ?? null)}, denySegments: ${JSON.stringify(allow?.denySegments ?? null)}`)
   out.push(`readDenyDirs: ${JSON.stringify(allow?.readDirs ?? null)}, readDenyFiles: ${JSON.stringify(allow?.readFiles ?? null)}, mask: ${allow?.mask?.available ? '000' : 'fallback'}`)
-  out.push(`тильда раскрыта: ${JSON.stringify((allow?.roots ?? []).filter((root) => root.includes('/.cache')))}, отброшено/подозрительно: ${JSON.stringify(allow?.rejected ?? null)}`)
+  out.push(`tilde expanded: ${JSON.stringify((allow?.roots ?? []).filter((root) => root.includes('/.cache')))}, dropped/suspicious: ${JSON.stringify(allow?.rejected ?? null)}`)
 
-  // фикстуры: репозиторий, вложенный репозиторий, «секреты»
+  // fixtures: a repository, a nested repository, the "secrets"
   mkdirSync(`${cwd}/normal`, { recursive: true })
   mkdirSync(`${cwd}/secretdir/sub`, { recursive: true })
-  writeFileSync(`${cwd}/normal/probe.txt`, 'обычное содержимое\n')
-  writeFileSync(`${cwd}/secretdir/id_rsa`, 'СЕКРЕТНЫЙ КЛЮЧ\n')
-  writeFileSync(`${cwd}/secretdir/sub/nested`, 'СЕКРЕТ ВО ВЛОЖЕННОМ\n')
-  writeFileSync(`${cwd}/../secretfile.txt`, 'СЕКРЕТНЫЙ ФАЙЛ\n')
+  writeFileSync(`${cwd}/normal/probe.txt`, 'ordinary content\n')
+  writeFileSync(`${cwd}/secretdir/id_rsa`, 'SECRET KEY\n')
+  writeFileSync(`${cwd}/secretdir/sub/nested`, 'SECRET IN NESTED\n')
+  writeFileSync(`${cwd}/../secretfile.txt`, 'SECRET FILE\n')
   spawnSync('git', ['init', '-q', cwd], { stdio: 'ignore' })
   spawnSync('git', ['init', '-q', `${cwd}/sub`], { stdio: 'ignore' })
 
@@ -91,7 +91,7 @@ export async function apply(ctx) {
       else if (method === 'listDir') await ctx.fs.listDir(target)
       else if (method === 'stat') await ctx.fs.stat(target)
       else await ctx.fs.readBytes(target, void 0, 1024)
-      out.push(`${label}: ПРОЧИТАНО${expectOk ? '' : ' (ожидался отказ!)'}`)
+      out.push(`${label}: READ${expectOk ? '' : ' (expected a denial!)'}`)
     } catch (error) {
       out.push(`${label}: DENIED ${error.code ?? error.name}`)
     }
@@ -121,52 +121,52 @@ export async function apply(ctx) {
       `${label}: exit=${result.status} denial-signature=${signatures.some((signature) => stderr.includes(signature))} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
     )
   }
-  // регресс: нулёвки маски стёрты внешним процессом (так делает переустановка
-  // пакета) — confine обязан остаться рабочим, а маска должна восстановиться сама
+  // regression: an external process wiped the mask's zero-byte placeholders (as a
+  // package reinstall does) — confine must keep working, the mask must restore itself
   const maskDir = allow?.mask?.dir
   if (maskDir === void 0) {
-    out.push('маска не создавалась — регресс маски пропущен')
+    out.push('no mask was created — mask regression skipped')
   } else {
-    // снимаем сами нулёвки: rmdir каталога 000 не требует доступа внутрь него,
-    // поэтому это тот же исход, что при удалении папки пакета целиком
+    // remove the placeholders ourselves: rmdir on a 000 directory needs no access
+    // inside it, so this is the same outcome as deleting the whole package folder
     try { chmodSync(maskDir, 0o755) } catch {}
     rmSync(maskDir, { recursive: true, force: true })
     if (allow.mask.file !== void 0) rmSync(allow.mask.file, { force: true })
-    out.push(`внешнее удаление нулёвок: маска существует=${existsSync(maskDir)}`)
+    out.push(`external removal of the placeholders: mask exists=${existsSync(maskDir)}`)
     const after = [...args]
     after[2] = `touch ${cwd}/.git/post-mask-probe.txt`
     const confined = await ctx.sandbox.confine(after, policy)
     const result = spawnSync(confined.argv[0], confined.argv.slice(1), { encoding: 'utf8', cwd })
     const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
     out.push(
-      `команда без нулёвок: exit=${result.status} отказ-bwrap=${stderr.includes("can't find source path")} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-80)}`,
+      `command without the placeholders: exit=${result.status} bwrap-denial=${stderr.includes("can't find source path")} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-80)}`,
     )
-    out.push(`самовосстановление маски: существует=${existsSync(maskDir)}`)
+    out.push(`mask self-healing: exists=${existsSync(maskDir)}`)
   }
 
-  // проверки правил имеют смысл только когда плагин подключён: basetest идёт
-  // против базовых провайдеров харнесса, и там их просто нет
+  // the rule checks only make sense when the plugin is attached: basetest runs
+  // against the harness's base providers, which simply do not provide them
   if (allow === void 0 || guard === void 0) {
-    out.push('плагин не подключён: проверки правил пропущены')
+    out.push('plugin not attached: rule checks skipped')
   } else {
-    // регресс: effective-списки берутся из config, файл состояния больше не должен
-    // перекрывать их (именно он прятал правку со страницы настроек)
+    // regression: the effective lists come from config, and the state file must no
+    // longer override them (it was exactly what hid the settings-page edit)
     const state = guard.state()
     const expected = String(ctx.sandboxPolicy.workspaceRoot)
     out.push(`sandboxGuard.state(): readDenyDirs=${JSON.stringify(state.readDenyDirs)}, writableDirs=${JSON.stringify(state.writableDirs)}, mask=${state.mask.available ? '000' : state.mask.fallback}`)
     const pluginSidecar = join(dirname(fileURLToPath(import.meta.url)), 'state.json')
-    out.push(`файл состояния не создаётся: ${!existsSync(pluginSidecar)}`)
+    out.push(`state file is not created: ${!existsSync(pluginSidecar)}`)
     const listed = state.readDenyDirs.length > 0 && state.readDenyDirs.some((dir) => dir.endsWith('secretdir'))
-    out.push(`правила из config видны сразу: ${listed}`)
-    let remoteCode = 'нет ошибки'
+    out.push(`rules from config are visible right away: ${listed}`)
+    let remoteCode = 'no error'
     try {
       guard.validate('bogus-kind', '/tmp/x')
     } catch (error) {
-      remoteCode = `${error.code ?? 'БЕЗ КОДА'}: ${String(error.message).slice(0, 40)}`
+      remoteCode = `${error.code ?? 'NO CODE'}: ${String(error.message).slice(0, 40)}`
     }
-    out.push(`Remote-отказ validate: ${remoteCode}`)
+    out.push(`Remote rejection from validate: ${remoteCode}`)
     const rejected = allow.validatePath('readDir', expected)
-    out.push(`validate covers-workspace: ${rejected.ok ? 'НЕ отклонён (ожидался отказ!)' : rejected.reason}`)
+    out.push(`validate covers-workspace: ${rejected.ok ? 'NOT rejected (expected a denial!)' : rejected.reason}`)
 
   }
 

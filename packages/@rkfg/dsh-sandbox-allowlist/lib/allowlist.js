@@ -1,15 +1,15 @@
 /**
  * sandbox-allowlist / policy service.
  *
- * Владелец одной файловой политики харнесса, расширенной в три стороны:
- *   writableDirs   — дополнительные корни на ЗАПИСЬ вне cwd сессии;
- *   denySegments   — имена компонентов пути, которые нельзя писать (по умолчанию `.git`);
- *   readDenyDirs / readDenyFiles — пути, которые нельзя ЧИТАТЬ (ключи, личные данные).
- * Списки задаются в config строки профиля (cordis.patch.yml).
+ * Owns one harness file policy, extended in three directions:
+ *   writableDirs   — extra roots for WRITING outside the session cwd;
+ *   denySegments   — path component names that must not be written (`.git` by default);
+ *   readDenyDirs / readDenyFiles — paths that must not be READ (keys, personal data).
+ * The lists come from the config of the profile row (cordis.patch.yml).
  *
- * Для чтения защита двухслойная: policy-fence в `fs.js` (отказ по пути для
- * инструментов и всех потребителей ctx.fs) и маска в `runner.js` (bind
- * каталога-нулёвки mode 000 в песочнице, откуда EACCES для любого процесса).
+ * Read protection is two-layered: the policy fence in `fs.js` (a refusal by path for
+ * the tools and for every consumer of ctx.fs) and the mask in `runner.js` (a bind of
+ * a mode-000 empty directory inside the sandbox, which gives any process EACCES).
  *
  * @module dsh-sandbox-allowlist/allowlist
  */
@@ -24,14 +24,13 @@ import { canonical, findProtectedUnder, segmentDenied } from './policy.js'
 
 const pluginDir = dirname(fileURLToPath(import.meta.url))
 
-/** Пути, которые харнесс читает сам: их защищать нельзя, иначе он ломает себя. */
 /**
- * Разворачивает `~` и `~/…` в домашний каталог. Правило приходит строкой из
- * config или со страницы настроек, а `resolve()` тильду не понимает: без этого
- * шага `~/.cache` молча выпадало из эффективных списков.
+ * Expands `~` and `~/…` into the home directory. A rule arrives as a string from
+ * config or from the settings page, and `resolve()` does not understand a tilde:
+ * without this step `~/.cache` silently dropped out of the effective lists.
  *
- * @param entry - путь из конфига.
- * @returns путь с раскрытой тильдой; `~user` не раскрывается и остаётся как есть.
+ * @param entry - a path from config.
+ * @returns the path with the tilde expanded; `~user` is not expanded and stays as is.
  */
 const expandHome = (entry) => {
   if (entry === '~') return homedir()
@@ -39,6 +38,7 @@ const expandHome = (entry) => {
   return entry
 }
 
+/** Paths the harness reads itself: protecting them would make the harness break itself. */
 const selfPaths = () => {
   const out = [process.cwd(), pluginDir]
   try {
@@ -49,14 +49,13 @@ const selfPaths = () => {
 }
 
 export default class SandboxAllowlist extends Service {
-  // нужен для проверки путей (граница сессии) при правках из UI
+  // needed to check paths (the session boundary) when rules are edited from the UI
   static inject = ['sandboxPolicy']
 
-  // Страница настроек харнесса показывает только поля, помеченные .volatile().
-  // Списки сейчас НЕ помечены: значение volatile-ссылки приходит из слоя
-  // настроек, а не из patch, и запись через settings.write в проверке зависла —
-  // то есть живой редактор правил ещё не готов. Списки читаются из config
-  // строки профиля; rights-файл state.json перекрывает их на ходу.
+  // The four rule lists are volatile references: the settings page writes them through
+  // ctx.remote.settings, and a running session picks the new value up on the
+  // `loader/volatile-update` event without a restart. The config of the profile row
+  // only supplies the initial value.
   static Config = z.object({
     writableDirs: z.array(z.string()).default([]).volatile(),
     announceInPrompt: z.boolean().default(true),
@@ -76,22 +75,22 @@ export default class SandboxAllowlist extends Service {
     ]),
     readDenyDirs: z.array(z.string()).default([]).volatile(),
     readDenyFiles: z.array(z.string()).default([]).volatile(),
-    /** Если маску mode 000 создать не удалось: прятать каталог tmpfs'ом или не маскировать. */
+    /** When the mode-000 mask could not be created: hide the directory behind a tmpfs, or leave it unmasked. */
     maskFallback: z.union(['tmpfs', 'skip']).default('tmpfs'),
-    /** Дописывать «permission denied» в denial-сигнатуры раннера, чтобы отказ чтения показывался как политический. */
+    /** Append "permission denied" to the runner's denial signatures, so a read refusal shows up as a policy denial. */
     readDenialSignature: z.boolean().default(true),
   })
 
-  /** Эффективные списки — только через геттеры, объявленное поле перекроет геттер. */
+  /** Effective lists are exposed through getters only — a declared field would shadow the getter. */
 
-  /** @type {Map<string, {at: number, paths: string[]}>} кэш обхода по корню */
+  /** @type {Map<string, {at: number, paths: string[]}>} cache of the per-root scan */
   protectedCache = new Map()
 
   mask = { available: false, dir: void 0, file: void 0 }
 
   config
 
-  /** Эффективные списки; перечитываются при обращении (см. syncLists). */
+  /** Effective lists; re-read on access (see syncLists). */
   lists = { roots: [], denySegments: [], readDirs: [], readFiles: [] }
 
   listsKey = null
@@ -104,12 +103,12 @@ export default class SandboxAllowlist extends Service {
     this.selfPaths = selfPaths()
     this.prepareMask()
 
-    // Харнесс сообщает об обновлении volatile-полей событием loader/volatile-update.
-    // Мемо по значениям остаётся основным механизмом (он не зависит от порядка
-    // доставки), а подписка снимает лишние пересчёты при каждом обращении.
+    // The harness reports updates of volatile fields with the loader/volatile-update event.
+    // Memoization by resolved values stays the primary mechanism (it does not depend on
+    // delivery order), while the subscription removes redundant recomputation per access.
     ctx.effect(() => ctx.on('loader/volatile-update', () => {
       this.listsKey = null
-    }), 'sandbox-allowlist: сброс мемо на volatile-update')
+    }), 'sandbox-allowlist: memo reset on volatile-update')
     this.syncLists()
 
     if (config.announceInPrompt) {
@@ -147,7 +146,7 @@ export default class SandboxAllowlist extends Service {
       })
     }
 
-    // ctx.effect ждёт setup, возвращающий disposer: очистка только при выгрузке.
+    // ctx.effect expects a setup that returns a disposer: cleanup runs only on unload.
     ctx.effect(() => () => {
       if (this.mask.dir !== void 0) try {
         chmodSync(this.mask.dir, 0o755)
@@ -159,9 +158,9 @@ export default class SandboxAllowlist extends Service {
   }
 
   /**
-   * volatile-поля (списки правил) резолвятся только после конструирования
-   * записи, поэтому списки перечитываются при обращении и пересобираются,
-   * только когда изменился config или файл состояния.
+   * volatile fields (the rule lists) are resolved only after the entry has been
+   * constructed, so the lists are re-read on access and rebuilt only when config or
+   * the state file has changed.
    */
   syncLists() {
     const config = this.config
@@ -176,7 +175,7 @@ export default class SandboxAllowlist extends Service {
       roots: this.collectDirs(this.liveList(config.writableDirs), this.selfPaths, 'writableDirs', rejected),
       denySegments: this.liveList(config.denySegments).filter((segment) => {
         if (typeof segment === 'string' && segment !== '' && !segment.includes('/') && segment !== '.' && segment !== '..' && !segment.startsWith('~')) return true
-        this.ctx.logger.warn(`sandbox-allowlist: denySegments: нужно одно имя пути, пропущено ${JSON.stringify(segment)}`)
+        this.ctx.logger.warn(`sandbox-allowlist: denySegments: a single path name is required, skipped ${JSON.stringify(segment)}`)
         rejected.push({ field: 'denySegments', entry: segment, reason: 'segment' })
         return false
       }),
@@ -190,14 +189,14 @@ export default class SandboxAllowlist extends Service {
     const summary = JSON.stringify([lists.roots, lists.denySegments, lists.readDirs, lists.readFiles])
     if (summary !== this.loggedSummary) {
       this.loggedSummary = summary
-      this.ctx.logger.info(`sandbox-allowlist: правила: корни ${JSON.stringify(lists.roots)}, защита по имени ${JSON.stringify(lists.denySegments)}, чтение закрыто ${JSON.stringify([...lists.readDirs, ...lists.readFiles])}, маска ${this.mask.available ? 'mode 000' : `fallback ${config.maskFallback}`}`)
+      this.ctx.logger.info(`sandbox-allowlist: rules: write roots ${JSON.stringify(lists.roots)}, protected names ${JSON.stringify(lists.denySegments)}, closed for reading ${JSON.stringify([...lists.readDirs, ...lists.readFiles])}, mask ${this.mask.available ? 'mode 000' : `fallback ${config.maskFallback}`}`)
     }
   }
 
-  /** Значение volatile-поля до резолвинга приходит пустым узлом, а не списком. */
+  /** Before resolution the value of a volatile field arrives as an empty node, not a list. */
   /**
-   * volatile-поля приходят ссылками { get() } (cosmokit), их значение меняется на
-   * ходу без перемонтирования записи — поэтому значение берётся при обращении.
+   * volatile fields arrive as { get() } references (cosmokit) and their value changes at
+   * runtime without remounting the entry — so the value is taken on access.
    */
   resolved(value) {
     return isVolatile(value) ? value.get() : value
@@ -224,7 +223,7 @@ export default class SandboxAllowlist extends Service {
     return this.lists.readDirs
   }
 
-  /** Правила из config, которые не применимы или применимы не полностью. */
+  /** Config rules that cannot be applied, or apply only in part. */
   get rejected() {
     this.syncLists()
     return this.lists.rejected
@@ -241,15 +240,15 @@ export default class SandboxAllowlist extends Service {
       if (typeof raw !== 'string' || raw.trim() === '') continue
       const entry = expandHome(raw.trim())
       if (!isAbsolute(entry)) {
-        this.ctx.logger.warn(`sandbox-allowlist: ${field}: нужен абсолютный путь или ~/…, пропущено ${JSON.stringify(raw)}`)
+        this.ctx.logger.warn(`sandbox-allowlist: ${field}: an absolute path or ~/… is required, skipped ${JSON.stringify(raw)}`)
         sink?.push({ field, entry: raw, reason: 'relative' })
         continue
       }
       const path = canonical(resolve(entry))
-      // Защита корня, из которого харнесс сам читает свой код и состояние,
-      // ломает не агента, а сам харнесс.
+      // Guarding a root the harness reads its own code and state from does not break the
+      // agent, it breaks the harness itself.
       if (self.some((own) => path === own || (own.length > path.length && own.startsWith(`${path}/`)))) {
-        this.ctx.logger.warn(`sandbox-allowlist: ${field} ${JSON.stringify(path)} покрывает путь самого харнесса — пропущено`)
+        this.ctx.logger.warn(`sandbox-allowlist: ${field} ${JSON.stringify(path)} covers a path of the harness itself — skipped`)
         sink?.push({ field, entry: raw, reason: 'covers-harness' })
         continue
       }
@@ -265,7 +264,7 @@ export default class SandboxAllowlist extends Service {
       if (typeof raw !== 'string' || raw.trim() === '') continue
       const entry = expandHome(raw.trim())
       if (!isAbsolute(entry)) {
-        this.ctx.logger.warn(`sandbox-allowlist: ${field}: нужен абсолютный путь или ~/…, пропущено ${JSON.stringify(raw)}`)
+        this.ctx.logger.warn(`sandbox-allowlist: ${field}: an absolute path or ~/… is required, skipped ${JSON.stringify(raw)}`)
         sink?.push({ field, entry: raw, reason: 'relative' })
         continue
       }
@@ -277,12 +276,12 @@ export default class SandboxAllowlist extends Service {
   }
 
 
-  /** Каталог и файл-нулёвка mode 000, которыми маска перекрывает защищённые пути. */
+  /** The mode-000 directory and empty file the mask uses to cover protected paths. */
   /**
-   * Нулёвки маски живут в папке плагина и могут исчезнуть во время работы
-   * (например при переустановке пакета). Проверяем их по факту и восстанавливаем:
-   * иначе bwrap падает целиком на «Can't find source path», и изоляция
-   * отваливается у всех команд сразу.
+   * The mask stubs live in the plugin folder and can disappear at runtime (for example
+   * when the package is reinstalled). They are checked and restored on demand: otherwise
+   * bwrap fails outright with "Can't find source path", and isolation drops for every
+   * command at once.
    */
   maskUsable() {
     if (this.mask.dir !== void 0 && this.mask.file !== void 0 && existsSync(this.mask.dir) && existsSync(this.mask.file)) return true
@@ -295,8 +294,8 @@ export default class SandboxAllowlist extends Service {
     const dir = join(root, 'empty-dir')
     const file = join(root, 'empty-file')
     try {
-      // Остаток прошлого запуска: каталог маски имеет режим 000, поэтому его
-      // нельзя ни удалить, ни обойти — сначала вернуть права.
+      // Leftover from a previous run: the mask directory has mode 000, so it can be
+      // neither removed nor worked around — give the permissions back first.
       for (const stale of [dir, root]) try {
         chmodSync(stale, 0o755)
       } catch {}
@@ -310,7 +309,7 @@ export default class SandboxAllowlist extends Service {
       chmodSync(file, 0o000)
       this.mask = { available: true, dir, file }
     } catch (error) {
-      this.ctx.logger.warn(`sandbox-allowlist: маска mode 000 не создана (${String(error)}), fallback: ${this.config.maskFallback}`)
+      this.ctx.logger.warn(`sandbox-allowlist: the mode-000 mask was not created (${String(error)}), fallback: ${this.config.maskFallback}`)
       this.mask = { available: false, dir, file: existsSync(file) ? file : void 0 }
     }
   }
@@ -318,10 +317,10 @@ export default class SandboxAllowlist extends Service {
 
 
 
-  /** Назначает списки без валидации (для загрузки сохранённого состояния). */
+  /** Assigns the lists without validation (to load saved state). */
 
 
-  /** Снимок для UI: списки, служебные ручки и состояние маски. */
+  /** Snapshot for the UI: the lists, the service handles and the mask state. */
   snapshot() {
     return {
       writableDirs: [...this.roots],
@@ -336,7 +335,7 @@ export default class SandboxAllowlist extends Service {
     }
   }
 
-  /** Проверка пути до добавления: абсолютность, пересечение с самим харнессом, наличие. */
+  /** Checks a path before it is added: absolute, not overlapping the harness itself, existing. */
   validatePath(kind, path) {
     if (typeof path !== 'string' || path.trim() === '') return { ok: false, reason: 'empty' }
     const entry = expandHome(path.trim())
@@ -352,18 +351,18 @@ export default class SandboxAllowlist extends Service {
     return { ok: true, path: canonicalPathValue, exists: existsSync(canonicalPathValue) }
   }
 
-  /** Имя защищённого компонента, в котором лежит канонический путь, если есть. */
+  /** The protected segment name the canonical path lies in, if there is one. */
   deniedSegment(targetPath) {
     if (this.denySegments.length === 0) return void 0
     return segmentDenied(targetPath, this.denySegments)
   }
 
   /**
-   * Попадает ли канонический путь под защиту от чтения.
-   * @param key канонический путь цели.
-   * @param allowDirRoot - `true` разрешает сам защищённый каталог (его существование
-   *   не секрет), но всё внутри всё равно закрыто; для перечисления содержимого
-   *   передавать `false`.
+   * Whether a canonical path is protected from reading.
+   * @param key the canonical path of the target.
+   * @param allowDirRoot - `true` allows the protected directory itself (its existence is
+   *   not a secret), but everything inside it stays closed; pass `false` when the
+   *   contents are being listed.
    */
   readDeniedFor(key, allowDirRoot = true) {
     if (typeof key !== 'string') return void 0
@@ -378,7 +377,7 @@ export default class SandboxAllowlist extends Service {
     return void 0
   }
 
-  /** Существующие защищённые от записи пути под перечисленными корнями (кэшированный обход). */
+  /** Write-protected paths that exist under the listed roots (cached scan). */
   protectedUnder(roots) {
     const found = new Set()
     for (const root of roots) {

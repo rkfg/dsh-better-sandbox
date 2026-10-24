@@ -1,9 +1,9 @@
-# @rkfg/dsh-sandbox-allowlist: песочница с дополнительными корнями на запись, защитой
-# .git от изменений и защитой секретов от чтения.
+# @rkfg/dsh-sandbox-allowlist: a sandbox with extra roots for writing, .git protected
+# from modification, and secrets protected from reading.
 #
-# Значения списков (writableDirs, readDenyDirs, readDenyFiles) намеренно НЕ здесь:
-# их задаёт профиль (или страница настроек), слой бандла описывает только состав
-# записей и то, какие базовые провайдеры они заменяют.
+# The list values (writableDirs, readDenyDirs, readDenyFiles) are deliberately NOT here:
+# the profile (or the settings page) supplies them; the bundle layer only describes the
+# set of entries and which base providers they replace.
 - id: fs-sandbox
   name: '@deepseek-ai/dsh-fs-sandbox'
   disabled: true

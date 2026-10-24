@@ -1,7 +1,7 @@
-# локальный контур проверки: профили, фикстуры, логи
+# local verification contour: profiles, fixtures, logs
 .dsh-test/
 
-# установочные артефакты
+# install artifacts
 node_modules/
 packages/*/node_modules/
 packages/*/lib/.mask/

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Проверка загрузки страницы: поднимает изолированный веб-профиль с обеими
-# коробками и грузит его в headless-браузере. Нужна именно она, потому что
-# клиентская половина может быть сломана при полностью рабочем хосте, и хост-логи
-# об этом молчат.
+# Page load check: boots an isolated web profile with both packages and loads it
+# in a headless browser. This is the check that matters, because the client half
+# can be broken while the host works perfectly, and the host logs stay silent
+# about it.
 #
-#   ./scripts/page-check.sh            # загрузка страницы + UI-тест раздела настроек
-#   UI_PROBE=0 ./scripts/page-check.sh # только загрузка страницы
+#   ./scripts/page-check.sh            # page load + UI test of the Settings section
+#   UI_PROBE=0 ./scripts/page-check.sh # page load only
 #   CHROME_BIN=google-chrome ./scripts/page-check.sh
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,7 +24,7 @@ for _ in $(seq 1 60); do
   [[ -n $url ]] && break
 done
 if [[ -z $url ]]; then
-  echo "сервер не поднялся, последние строки лога:"
+  echo "the server did not come up, last lines of the log:"
   tail -8 "$log"
   exit 1
 fi

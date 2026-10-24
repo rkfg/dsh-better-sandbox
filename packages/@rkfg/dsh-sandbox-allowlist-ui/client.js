@@ -1,11 +1,11 @@
 /*
- * @rkfg/dsh-sandbox-allowlist-ui / клиентский раздел настроек песочницы.
+ * @rkfg/dsh-sandbox-allowlist-ui / the sandbox settings section (client half).
  *
- * Читает и пишет правила через штатный слой настроек харнесса
- * (ctx.remote.settings): список правил становится volatile-полем строки
- * sandbox-allowlist, поэтому правка применяется без перемонтирования записей.
+ * Reads and writes the rules through the harness's regular settings layer
+ * (ctx.remote.settings): the list of rules becomes a volatile string field of the
+ * sandbox-allowlist entry, so an edit applies without remounting the entries.
  *
- * Формат — ручной бандл __ModuleLoader__, JSX не используется.
+ * Format — a hand-written __ModuleLoader__ bundle, no JSX is used.
  */
 window.__ModuleLoader__.load({
 	id: "@rkfg/dsh-sandbox-allowlist-ui",
@@ -43,16 +43,16 @@ window.__ModuleLoader__.load({
 		const toLines = (text) => text.split("\n").map((line) => line.trim()).filter((line) => line !== "")
 
 		/**
-		 * Проверка строки правила силами браузера. У полей двух родов свои правила:
-		 * путь обязан быть абсолютным или в форме ~/… (сегмент `~user` не поддерживается),
-		 * а имя пути — одним компонентом без разделителей и без `~`. Дубликаты ловятся в
-		 * обоих. Существование пути браузер проверить не может (из страницы в сервис
-		 * плагина дорога нет), поэтому за этим — хост: там правило попадает в `rejected`
-		 * с причиной `missing`.
+		 * Rule-line validation runs in the browser. The two kinds of field have their
+		 * own rules: a path must be absolute or in ~/… form (the `~user` form is not
+		 * supported), and a path name must be one component with no separators and no
+		 * `~`. Duplicates are caught for both kinds. The browser cannot check that a
+		 * path exists (there is no route from the page to a plugin service), so that is
+		 * the host's job: there the rule lands in `rejected` with reason `missing`.
 		 *
-		 * @param text - содержимое поля, по строке на правило.
-		 * @param kind - `path` для путей и `segment` для имён компонентов пути.
-		 * @returns список проблем: { entry, reason }.
+		 * @param text - the contents of the field, one rule per line.
+		 * @param kind - `path` for paths and `segment` for path-component names.
+		 * @returns the list of problems: { entry, reason }.
 		 */
 		const checkLines = function (text, kind) {
 			const problems = []
@@ -82,8 +82,8 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = useState(false)
 			const [issues, setIssues] = useState({})
 
-			// keepDrafts=true обновляет только снимок профиля (и ревизию), но не
-			// трогает то, что уже набрано в полях: так работает выход из конфликта.
+			// keepDrafts=true refreshes only the profile snapshot (and the revision) and
+			// leaves what is already typed in the fields alone: that is how a conflict clears.
 			const reload = useCallback(function (keepDrafts) {
 				setBusy(true)
 				return api.read()
@@ -156,10 +156,10 @@ window.__ModuleLoader__.load({
 						return reload()
 					})
 					.catch(function (failure) {
-						// SETTINGS_CONFLICT означает, что профиль поправился в другом
-						// месте после того, как форма загрузила значения. Ревизию нужно
-						// освежить, а набранное сохранить: иначе правка пользователя
-						// потеряется вместе с отказом.
+						// SETTINGS_CONFLICT means the profile was edited somewhere else after this
+						// form loaded its values. The revision must be refreshed and what has been
+						// typed kept: otherwise the user's edit would be lost along with the
+						// rejection.
 						if (failure.code === "SETTINGS_CONFLICT") {
 							setError(t("conflict"))
 							return reload(true)
@@ -321,7 +321,7 @@ window.__ModuleLoader__.load({
 				return function () {
 					if (typeof locale === "function") locale()
 				}
-			}, "sandbox-allowlist-ui: словарь раздела")
+			}, "sandbox-allowlist-ui: section dictionary")
 
 			ctx.slots.inject("settings.section", function () {
 				return ctx.slots.register(

@@ -1,9 +1,9 @@
 /**
- * dsh-sandbox-allowlist/bundle: группа записей бандла.
+ * dsh-sandbox-allowlist/bundle: the bundle's entry group.
  *
- * Группа нужна, чтобы все четыре строки плагина жили одним поддеревом: его можно
- * выключить целиком, и именно такие записи попадают в список настраиваемых
- * (страница настроек в веб-UI строится по записям из include-поддеревьев).
+ * The group keeps all four plugin rows in one subtree: it can be switched off as a
+ * whole, and only such entries land on the configurable list (the settings page in
+ * the web UI is built from entries in include subtrees).
  *
  * @module dsh-sandbox-allowlist/bundle
  */
@@ -14,7 +14,7 @@ export default class SandboxAllowlistBundle {
   static inject = ['loader']
   static [groupKey] = true
 
-  /** @param {any} ctx @param {any[]} config дочерние строки из patch-слоя бандла */
+  /** @param {any} ctx @param {any[]} config child rows from the bundle's patch layer */
   constructor(ctx, config) {
     this.ctx = ctx
     this.config = config
@@ -22,7 +22,7 @@ export default class SandboxAllowlistBundle {
 
   async *[init]() {
     const Group = this.ctx.loader?.builtins?.group
-    if (typeof Group !== 'function') throw new Error('dsh-sandbox-allowlist/bundle нужна встроенная запись cordis:group')
+    if (typeof Group !== 'function') throw new Error('dsh-sandbox-allowlist/bundle needs the built-in cordis:group entry')
     const group = new Group(this.ctx, this.config)
     yield () => group.stop()
     await group.update(this.config)

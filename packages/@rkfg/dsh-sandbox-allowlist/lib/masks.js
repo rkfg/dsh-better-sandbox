@@ -1,17 +1,17 @@
 /**
- * sandbox-allowlist / bwrap-аргументы.
+ * sandbox-allowlist / bwrap arguments.
  *
- * Один источник истины для того, что плагин добавляет в профиль bwrap: гранты
- * на запись вне cwd, возврат read-only для защищённых путей и маски для
- * защищённых от чтения. Нужен отдельным модулем потому, что seam `ctx.subprocess`
- * синхронный: обёртка ripgrep не может дождаться `ctx.sandbox.confine` и
- * собирает argv сама, а путь bash идёт через провайдер и вставляет эти же куски
- * в его готовый argv. Разъезжающиеся флаги здесь были бы дырой.
+ * Single source of truth for what the plugin adds to the bwrap profile: write grants
+ * outside the cwd, the read-only return for protected paths, and the masks for the
+ * read-protected ones. It has to be a separate module because the `ctx.subprocess`
+ * seam is synchronous: the ripgrep wrapper cannot wait for `ctx.sandbox.confine` and
+ * builds argv itself, while the bash path goes through the provider and inserts these
+ * same pieces into its ready argv. Flags drifting apart here would be a hole.
  *
- * Базовый профиль bwrap воспроизведён по образцу `dsh-sandbox-local`
+ * The base bwrap profile is reproduced after `dsh-sandbox-local`
  * (`--ro-bind / /`, `--dev`, `--proc`, `--unshare-pid`, `--die-with-parent`,
- * плюс tmpfs на `/tmp` в workspace-write) — при смене формата в харнессе
- * правку надо занести и сюда.
+ * plus a tmpfs on `/tmp` in workspace-write) — if the harness changes the format,
+ * the edit has to be brought here too.
  *
  * @module dsh-sandbox-allowlist/masks
  */
@@ -24,27 +24,27 @@ export const bwrapBaseArgs = (mode) => {
 }
 
 /**
- * Аргументы плагина для одного confinement'а.
- * @param allow - сервис sandboxAllowlist.
- * @param policy - разрешаемая политика этого запуска.
- * @param confined - корни, которые нельзя перекрывать маской (cwd сессии и гранты).
- * @param warn - колбэк предупреждений (один вызов на причину у вызывающего).
- * @param applyWriteGuards - применять ли гранты и read-only возвраты (только
- *   `workspace-write`); маски чтения применяются при любом confinement'е.
+ * The plugin's arguments for one confinement.
+ * @param allow - the sandboxAllowlist service.
+ * @param policy - the policy allowed for this run.
+ * @param confined - roots that must not be covered by a mask (the session cwd and the grants).
+ * @param warn - warning callback (the caller emits one call per reason).
+ * @param applyWriteGuards - whether to apply grants and read-only returns (only
+ *   `workspace-write`); read masks apply under any confinement.
  */
 export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards) {
   const args = []
   if (applyWriteGuards) {
     for (const root of allow.roots) {
       if (!existsSync(root)) {
-        warn(`missing-${root}`, `sandbox-allowlist: корень ${JSON.stringify(root)} не существует, грант пропущен`)
+        warn(`missing-${root}`, `sandbox-allowlist: root ${JSON.stringify(root)} does not exist, grant skipped`)
         continue
       }
       args.push('--bind', root, root)
     }
     for (const path of allow.protectedUnder(confined)) {
-      // Путь мог исчезнуть между кэшированным обходом и запуском команды, а
-      // bwrap на отсутствующем источнике падает целиком — проверяем сейчас.
+      // The path may have disappeared between the cached scan and the command launch, and
+      // bwrap fails outright on a missing source — so it is checked right here.
       if (!existsSync(path)) continue
       args.push('--ro-bind', path, path)
     }
@@ -52,22 +52,22 @@ export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards) 
   for (const dir of allow.readDirs) {
     if (!existsSync(dir)) continue
     if (confined.some((root) => dir === root || root.startsWith(`${dir}/`))) {
-      warn(`swallow-${dir}`, `sandbox-allowlist: маска чтения на ${JSON.stringify(dir)} перекрывала бы рабочую директорию — пропущено`)
+      warn(`swallow-${dir}`, `sandbox-allowlist: a read mask on ${JSON.stringify(dir)} would cover the working directory — skipped`)
       continue
     }
     if (allow.maskUsable()) args.push('--ro-bind', allow.mask.dir, dir)
     else if (allow.config.maskFallback !== 'skip') args.push('--tmpfs', dir)
-    else warn(`nomask-${dir}`, `sandbox-allowlist: маска чтения для ${JSON.stringify(dir)} не применена (нулёвки нет)`)
+    else warn(`nomask-${dir}`, `sandbox-allowlist: read mask for ${JSON.stringify(dir)} not applied (no stub)`)
   }
   for (const file of allow.readFiles) {
     if (!existsSync(file)) continue
     if (allow.maskUsable()) args.push('--ro-bind', allow.mask.file, file)
-    else warn(`maskfile-${file}`, `sandbox-allowlist: маска чтения для файла ${JSON.stringify(file)} не применена (нулёвки нет)`)
+    else warn(`maskfile-${file}`, `sandbox-allowlist: read mask for file ${JSON.stringify(file)} not applied (no stub)`)
   }
   return args
 }
 
-/** Признак упакованного ripgrep: его и только его обёртка confinement'ит. */
+/** How to recognize the bundled ripgrep: it is the only program the wrapper confines. */
 export const isRipgrep = (program) => {
   if (typeof program !== 'string') return false
   return /(^|[\\/])rg(\.exe)?$/u.test(program) || program.includes('@vscode/ripgrep')

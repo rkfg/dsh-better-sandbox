@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Устанавливает обе коробки в профиль и включает их в dsh.profile.bundles.
-# Состав строк описан в patch-слое бандла, поэтому в cordis.patch.yml профиля
-# остаются только значения списков.
+# Installs both packages into the profile and enables them in dsh.profile.bundles.
+# The entries themselves are declared in the bundle's patch layer, so the profile's
+# cordis.patch.yml only carries the list values.
 #
-#   ./scripts/install.sh                                  # профиль web
-#   ./scripts/install.sh --home <dir> --profile <имя>     # другой DSH_HOME/профиль
-#   ./scripts/install.sh --drop <старое-имя>              # убрать старое имя пакета
+#   ./scripts/install.sh                                  # the web profile
+#   ./scripts/install.sh --home <dir> --profile <name>    # another DSH_HOME/profile
+#   ./scripts/install.sh --drop <old-name>                # drop an old package name
 #
-# --drop нужна после переименования пакета: иначе в профилях остаются строки и
-# папки старого имени, а два пакета с одним именем пакета роняют загрузку
-# страницы («duplicate factory registration»).
+# --drop is needed after a package rename: otherwise the profiles keep the entries
+# and folders of the old name, and two packages sharing one package name break the
+# page load ("duplicate factory registration").
 #
-# Штатная установка плагина — `dsh plugin --profile <name> add @rkfg/dsh-sandbox-allowlist`.
-# Этот скрипт нужен для установки из рабочего дерева: он проверяет синтаксис,
-# делает копию package.json профиля и пересоздаёт нулёвки маски, которые
-# запущенный харнесс передаёт в bwrap как пути-источники.
+# The regular install is `dsh plugin --profile <name> add @rkfg/dsh-sandbox-allowlist`.
+# This script is for installing from a working tree: it checks the syntax, backs up the
+# profile's package.json, and re-creates the mask stubs that bwrap takes as source paths.
+#
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 home=${DSH_HOME:-"$HOME/.dsh"}
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
     --profile) profile=$2; shift 2 ;;
     --drop) drop+=("$2"); shift 2 ;;
     -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
-    *) echo "неизвестный аргумент: $1" >&2; exit 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -35,31 +35,31 @@ uipkg="$root/packages/@rkfg/dsh-sandbox-allowlist-ui"
 prof="$home/profiles/$profile"
 dst="$prof/node_modules/@rkfg/dsh-sandbox-allowlist"
 uirst="$prof/node_modules/@rkfg/dsh-sandbox-allowlist-ui"
-[[ -d "$prof" ]] || { echo "нет профиля: $prof" >&2; exit 1; }
+[[ -d "$prof" ]] || { echo "no such profile: $prof" >&2; exit 1; }
 
 export DROP
 DROP=$(printf '%s\n' "${drop[@]:-}" | sed '/^$/d')
 bash "$root/scripts/lint.sh" || exit 1
 
 if [[ -e "$dst" ]]; then
-  prev=$(node -e 'const p=require(process.argv[1]);console.log(p.version??"")' "$dst/package.json" 2>/dev/null || echo неизвестно)
+  prev=$(node -e 'const p=require(process.argv[1]);console.log(p.version??"")' "$dst/package.json" 2>/dev/null || echo unknown)
   rm -rf "$dst"
-  echo "обновлена предыдущая установка (версия $prev)"
+  echo "updated a previous installation (version $prev)"
 fi
 mkdir -p "$prof/node_modules/@rkfg"
 cp -r "$src" "$dst"
 rm -rf "$dst/lib/.mask"
 
-# Нулёвки маски mode 000 лежат в папке плагина и уходят в bwrap как пути-источники:
-# если их нет, confine падает у каждой команды («Can't find source path»), поэтому
-# их создаёт и сам плагин перед каждой командой, и установщик — сразу после копирования.
+# The mode-000 mask stubs live in the plugin folder and go to bwrap as source paths:
+# without them confine fails for every command ("Can't find source path"), so they are
+# created both by the plugin before each command and by the installer right after copying.
 mask="$dst/lib/.mask"
 mkdir -p "$mask/empty-dir"
 : > "$mask/empty-file"
 chmod 000 "$mask/empty-dir" "$mask/empty-file"
 
-# Коробка с разделом настроек — отдельный пакет: пакет с клиентской половиной
-# обязан иметь ровно одну запись загрузчика.
+# The package holding the Settings section is a separate package: a package with a client
+# half must own exactly one loader entry.
 rm -rf "$uirst"
 cp -r "$uipkg" "$uirst"
 
@@ -77,22 +77,22 @@ for (const name of dropped) {
   const index = pkg.dsh.profile.bundles.indexOf(name)
   if (index !== -1) pkg.dsh.profile.bundles.splice(index, 1)
   fs.rmSync(`${path.dirname(file)}/node_modules/${name.replace('/', '/').replace('@', '@')}`, { recursive: true, force: true })
-  console.log(`убрано старое имя: ${name}`)
+  console.log(`removed old name: ${name}`)
 }
 const missing = wanted.filter((name) => !pkg.dsh.profile.bundles.includes(name))
 if (dropped.length === 0 && missing.length === 0) {
-  console.log('обе коробки уже в bundles')
+  console.log('both packages are already in bundles')
 } else {
   const backup = `${file}.bak-bundle-${new Date().toISOString().replace(/[:.]/g, '-')}`
   fs.writeFileSync(backup, fs.readFileSync(file, 'utf8'))
   pkg.dsh.profile.bundles.push(...missing)
   fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`)
-  console.log(`добавлено в bundles: ${missing.join(', ')} (копия: ${backup})`)
+  console.log(`added to bundles: ${missing.join(', ')} (backup: ${backup})`)
 }
 NODE
 )" "$prof/package.json"
 
-echo "установлено: $dst"
-echo "установлено: $uirst"
-echo "в профиле достаточно значений: - id: sandbox-allowlist / name: '@rkfg/dsh-sandbox-allowlist/allowlist' / config: { writableDirs: [...], readDenyDirs: [...], readDenyFiles: [...], denySegments: [...] }"
-echo 'нужен рестарт профиля'
+echo "installed: $dst"
+echo "installed: $uirst"
+echo "the profile only needs the values: - id: sandbox-allowlist / name: '@rkfg/dsh-sandbox-allowlist/allowlist' / config: { writableDirs: [...], readDenyDirs: [...], readDenyFiles: [...], denySegments: [...] }"
+echo 'a profile restart is required'

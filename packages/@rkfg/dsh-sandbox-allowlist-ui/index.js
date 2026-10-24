@@ -1,9 +1,9 @@
 /**
- * @rkfg/dsh-sandbox-allowlist-ui: единственная хостовая запись коробки.
+ * @rkfg/dsh-sandbox-allowlist-ui: the box's only host-side entry.
  *
- * Пакет с клиентской половиной обязан иметь ровно одну запись загрузчика,
- * поэтому UI живёт отдельным бандлом, а не внутри @rkfg/dsh-sandbox-allowlist.
- * Никакой логики здесь нет: правила читает и пишет слой настроек харнесса.
+ * A package that ships a client half must have exactly one loader entry, which is
+ * why the UI lives in its own bundle rather than inside @rkfg/dsh-sandbox-allowlist.
+ * There is no logic here: the harness settings layer reads and writes the rules.
  *
  * @module @rkfg/dsh-sandbox-allowlist-ui
  */

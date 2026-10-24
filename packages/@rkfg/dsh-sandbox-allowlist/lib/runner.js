@@ -1,14 +1,14 @@
 /**
- * sandbox-allowlist / sandbox: расширение confinement дочерних процессов.
+ * sandbox-allowlist / sandbox: an extension of child-process confinement.
  *
- * Берёт готовый argv у LocalSandboxProvider (выбор раннера, denial-сигнатуры и
- * правила диагностики остаются базовые) и вставляет свои аргументы перед `--`,
- * то есть ПОСЛЕ привязки workspace — поздние привязки bwrap перекрывают ранние.
- * Сами аргументы живёт в `masks.js`, оттуда же их берёт синхронная обёртка
- * ripgrep: два места с разными флагами были бы дырой.
+ * Takes the ready argv from LocalSandboxProvider (runner choice, denial signatures and
+ * diagnostic rules stay the base ones) and inserts its own arguments before `--`, that
+ * is AFTER the workspace bind — bwrap lets later binds override earlier ones.
+ * The arguments themselves live in `masks.js`, and the synchronous ripgrep wrapper
+ * takes them from there too: two places with different flags would be a hole.
  *
- * Landlock не умеет ни вычитать запись из более широкого правила, ни запретить
- * чтение подпути — там защита не выражается, о чём пишется предупреждение.
+ * Landlock can neither subtract write access from a broader rule nor deny reading a
+ * subpath — the protection cannot be expressed there, which a warning reports.
  *
  * @module dsh-sandbox-allowlist/runner
  */
@@ -36,8 +36,8 @@ export default class AllowlistSandboxProvider extends LocalSandboxProvider {
 
   warnOnce(key, message) {
     if (this.warned.has(key)) return
-    // Множество растёт вместе с числом разных путей, поэтому оно ограничено:
-    // при переполнении начинается новый цикл, а не бесконечный рост.
+    // The set grows with the number of distinct paths, so it is capped:
+    // on overflow a new cycle starts instead of unbounded growth.
     if (this.warned.size >= WARNED_LIMIT) this.warned.clear()
     this.warned.add(key)
     this.ctx.logger.warn(message)
@@ -52,13 +52,13 @@ export default class AllowlistSandboxProvider extends LocalSandboxProvider {
     if (separator === -1) return base
     const runner = detectRunner(base.argv)
     if (runner === 'unknown') {
-      this.warnOnce(`unknown-${base.argv[0]}`, `sandbox-allowlist: раннер ${JSON.stringify(base.argv[0])} не получает ни грантов, ни защиты`)
+      this.warnOnce(`unknown-${base.argv[0]}`, `sandbox-allowlist: runner ${JSON.stringify(base.argv[0])} gets neither grants nor protection`)
       return base
     }
     if (runner === 'landlock' && (allow.readDirs.length > 0 || allow.readFiles.length > 0 || allow.denySegments.length > 0)) {
       this.warnOnce(
         'landlock-guards',
-        'sandbox-allowlist: landlock не умеет вычитать запись и запрещать чтение подпути — denySegments и readDeny для него не применяются',
+        'sandbox-allowlist: landlock cannot subtract write access or deny reading a subpath — denySegments and readDeny are not applied for it',
       )
     }
     const result = runner === 'bwrap'
@@ -70,10 +70,10 @@ export default class AllowlistSandboxProvider extends LocalSandboxProvider {
           }
         })()
       : base
-    // Отказ чтения из маски — это EACCES («permission denied»), а базовые
-    // сигнатуры bwrap знают только «read-only file system». Без дополнения
-    // инструмент bash показал бы обычную ошибку вместо политического отказа с
-    // подсказкой об эскалации.
+    // A read refusal coming from the mask is EACCES ("permission denied"), while the base
+    // bwrap signatures only know "read-only file system". Without the addition the bash
+    // tool would show an ordinary error instead of a policy denial with an escalation
+    // hint.
     if (runner === 'bwrap' && allow.config.readDenialSignature && (allow.readDirs.length > 0 || allow.readFiles.length > 0)) {
       return { ...result, denialSignatures: [...result.denialSignatures, 'permission denied'] }
     }

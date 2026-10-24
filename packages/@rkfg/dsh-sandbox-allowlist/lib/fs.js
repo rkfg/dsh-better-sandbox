@@ -1,16 +1,16 @@
 /**
- * sandbox-allowlist / fs: расширение песочницы файловой системы.
+ * sandbox-allowlist / fs: an extension of the file system sandbox.
  *
- * Наследует SandboxedFileSystem (всю механику LocalFileSystem) и меняет решение
- * о цели операции:
- *   запись  — сначала защита по именам (`denySegments`), затем дополнительные
- *             корни, затем базовый containment;
- *   чтение  — отказ по путям из `readDenyDirs` / `readDenyFiles`. Харнесс
- *             забор на чтении не ставит вовсе (`read` разрешён в любом режиме),
- *             поэтому отказ выдаётся тем же кодом FS_SANDBOX_DENIED: инструменты
- *             показывают штатный `[sandbox: …]` и подсказку про эскалацию.
- * danger-full-access — как в харнессе, без забора: туда ведёт эскалация, и она
- * снимает защиту осознанно, по approve пользователя.
+ * Extends SandboxedFileSystem (all of the LocalFileSystem mechanics) and only changes
+ * how the target of an operation is judged:
+ *   write   — name protection first (`denySegments`), then the extra roots,
+ *             then the base containment;
+ *   read    — refusal for paths from `readDenyDirs` / `readDenyFiles`. The harness
+ *             puts no fence on reading at all (`read` is allowed in every mode),
+ *             so the refusal is raised with the same FS_SANDBOX_DENIED code: the
+ *             tools then show the regular `[sandbox: …]` marker and the escalation hint.
+ * danger-full-access behaves as in the harness — no fence: escalation leads there, and
+ * it removes the protection deliberately, on the user's approval.
  *
  * @module dsh-sandbox-allowlist/fs
  */
@@ -40,8 +40,8 @@ export default class AllowlistedFileSystem extends SandboxedFileSystem {
   denyRead(displayPath, key, operation, allowDirRoot = true) {
     const protectedBy = this.allow.readDeniedFor(key, allowDirRoot)
     if (protectedBy === void 0) return
-    // Для write/edit инструмент сам подставляет маркер и подсказку; для чтения
-    // он этого не делает, поэтому текст собирается здесь теми же помощниками.
+    // For write/edit the tool substitutes the marker and the hint itself; for reading
+    // it does not, so the text is assembled here with the same helpers.
     throw new FsError(
       [
         sandboxDenialMarker('workspace-write'),
@@ -52,7 +52,7 @@ export default class AllowlistedFileSystem extends SandboxedFileSystem {
     )
   }
 
-  /** lstat намеренно path-образный (не follow symlink) — нормализуем сами. */
+  /** lstat is deliberately path-shaped (it does not follow symlinks) — normalize it ourselves. */
   normalizePath(path, opts) {
     const absolute = resolve(opts?.cwd ?? process.cwd(), path)
     try {

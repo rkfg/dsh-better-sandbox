@@ -1,17 +1,17 @@
-// UI-тест раздела «Sandbox»: открывает диалог настроек, вписывает в поле заведомо
-// непригодные правила, нажимает Save и проверяет, что страница показала красным
-// каждую проблему и не сохранила правку. Нужен именно прогон в браузере: проверка
-// живёт в клиентской половине, и сломать её можно не заметив на хосте.
+// UI test for the "Sandbox" section: it opens the Settings dialog, types deliberately
+// unusable rules into a field, clicks Save, and checks that the page marks every problem
+// in red and refuses to save the edit. It has to run in a browser: the validation lives in
+// the client half, and you can break it without noticing anything on the host.
 //
 //   node test/settings-ui-probe.mjs <url>
 //
-// Переменная CHROME_BIN задаёт бинарь браузера.
+// CHROME_BIN selects the browser binary.
 import { spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const url = process.argv[2]
 if (url === undefined) {
-  console.error('использование: node test/settings-ui-probe.mjs <url>')
+  console.error('usage: node test/settings-ui-probe.mjs <url>')
   process.exit(2)
 }
 
@@ -29,7 +29,7 @@ for (const bin of candidates) {
     break
   } catch {}
 }
-if (chrome === undefined) { console.error('браузер не найден: установите chromium или задайте CHROME_BIN'); process.exit(2) }
+if (chrome === undefined) { console.error('browser not found: install chromium or set CHROME_BIN'); process.exit(2) }
 
 const cleanup = () => { try { chrome.kill('SIGKILL') } catch {} }
 process.on('exit', cleanup)
@@ -44,7 +44,7 @@ for (let attempt = 0; attempt < 60; attempt += 1) {
     if (target !== undefined) break
   } catch {}
 }
-if (target === undefined) { console.error('CDP-цель не получена'); process.exit(1) }
+if (target === undefined) { console.error('no CDP target'); process.exit(1) }
 
 const socket = new WebSocket(target.webSocketDebuggerUrl)
 let nextId = 1
@@ -80,7 +80,7 @@ await send('Page.enable')
 await send('Page.navigate', { url })
 await sleep(7000)
 
-// Помощник внутри страницы: клик по элементу, чей текст или aria-label совпал.
+// Helper inside the page: click the element whose text or aria-label matched.
 const clicker = `
   const clickWhere = (matcher) => {
     const nodes = [...document.querySelectorAll('button,[role=button],a,[role=menuitem],[role=tab]')]
@@ -92,10 +92,10 @@ const clicker = `
 `
 
 const opened = await evaluate(`${clicker}
-  const viaAccount = clickWhere(/Account menu|Учётная запись|账户/i)
+  const viaAccount = clickWhere(/Account menu|账户/i)
   return { viaAccount }`)
 await sleep(1200)
-const settings = await evaluate(`${clicker} return clickWhere(/Settings|Настройки|设置/i)`)
+const settings = await evaluate(`${clicker} return clickWhere(/Settings|设置/i)`)
 await sleep(1500)
 const section = await evaluate(`${clicker} return clickWhere(/^\\s*Sandbox\\s*$|沙盒/)`)
 await sleep(1200)
@@ -106,7 +106,7 @@ const filled = await evaluate(`
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
   setter.call(areas[0], "/tmp/ok-dir\\nrelative/path\\n~root/keys\\n/tmp/ok-dir")
   areas[0].dispatchEvent(new Event('input', { bubbles: true }))
-  // поле имён путей: .git — корректное правило, сегмент с разделителем — нет
+  // path-name field: .git is a valid rule, a segment with a separator is not
   const last = areas[areas.length - 1]
   setter.call(last, ".git\\nnested/.git")
   last.dispatchEvent(new Event('input', { bubbles: true }))
@@ -114,7 +114,7 @@ const filled = await evaluate(`
 await sleep(800)
 
 const saved = await evaluate(`
-  const button = [...document.querySelectorAll('button')].find((node) => /^(Save|Сохранить|保存)$/.test((node.textContent || '').trim()))
+  const button = [...document.querySelectorAll('button')].find((node) => /^(Save|保存)$/.test((node.textContent || '').trim()))
   if (button === undefined) return false
   button.click()
   return true`)
@@ -133,20 +133,20 @@ const verdict = await evaluate(`
   }`)
 
 const failures = []
-if (opened.viaAccount !== true) failures.push('не открылось меню учётной записи')
-if (settings !== true) failures.push('не открылся диалог настроек')
-if (section !== true) failures.push('не найден раздел Sandbox в настройках')
-if (filled.areas === 0) failures.push('в разделе нет полей ввода')
-if (saved !== true) failures.push('не найдена кнопка Save')
+if (opened.viaAccount !== true) failures.push('the account menu did not open')
+if (settings !== true) failures.push('the Settings dialog did not open')
+if (section !== true) failures.push('the Sandbox section was not found in Settings')
+if (filled.areas === 0) failures.push('the section has no input fields')
+if (saved !== true) failures.push('the Save button was not found')
 for (const key of ['relative', 'tildeUser', 'duplicate', 'blocked', 'segment']) {
-  if (verdict[key] === null) failures.push(`под подпись «${key}» не появилась`)
+  if (verdict[key] === null) failures.push(`the "${key}" caption never appeared`)
 }
 
-console.log('открыт раздел:', section, '| полей:', filled.areas, '| нажато Save:', saved)
-console.log('подписи:', JSON.stringify(verdict))
+console.log('section opened:', section, '| fields:', filled.areas, '| Save clicked:', saved)
+console.log('captions:', JSON.stringify(verdict))
 const gitFlagged = String(verdict.raw ?? '').split(String.fromCharCode(10)).some((line) => /needs an absolute path|需要绝对路径/.test(line) && line.includes('.git'))
-if (gitFlagged) failures.push('правило .git в поле имён помечено как неверное')
-if (failures.length === 0) console.log('проверка пройдена: непригодные правила подсвечены красным, сохранение заблокировано')
-else console.log('проверка провалена: ' + failures.join('; '))
+if (gitFlagged) failures.push('the .git rule in the path-name field is flagged as invalid')
+if (failures.length === 0) console.log('check passed: unusable rules are highlighted in red and saving is blocked')
+else console.log('check failed: ' + failures.join('; '))
 cleanup()
 process.exit(failures.length === 0 ? 0 : 1)

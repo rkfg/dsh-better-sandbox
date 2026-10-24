@@ -1,19 +1,19 @@
-// Зонд загрузки страницы: грузит тестовый веб-профиль в headless-браузере и
-// проверяет, что клиентская половина собралась. Плагин может быть полностью
-// работоспособен на хосте и при этом обрывать загрузку SPA — например когда id
-// клиентского модуля не совпадает с именем пакета, загрузчик модулей падает с
-// «duplicate factory registration», а страница показывает «Failed to load
-// plugins». Хост-логи об этом молчат, поэтому проверка ведётся по консоли.
+// Page load probe: loads the test web profile in a headless browser and checks that the
+// client half actually assembled. The plugin can be fully working on the host and still
+// break the SPA load — for instance when the client module id does not match the package
+// name: the module loader dies with "duplicate factory registration" and the page shows
+// "Failed to load plugins". The host logs stay silent about this, so the check watches the
+// browser console.
 //
 //   node test/page-probe.mjs <url>
 //
-// Переменная CHROME_BIN задаёт бинарь браузера (chromium, google-chrome, …).
+// CHROME_BIN selects the browser binary (chromium, google-chrome, …).
 import { spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const url = process.argv[2]
 if (url === undefined) {
-  console.error('использование: node test/page-probe.mjs <url>')
+  console.error('usage: node test/page-probe.mjs <url>')
   process.exit(2)
 }
 
@@ -32,7 +32,7 @@ for (const bin of candidates) {
     break
   } catch {}
 }
-if (chrome === undefined) { console.error('браузер не найден: установите chromium или задайте CHROME_BIN'); process.exit(2) }
+if (chrome === undefined) { console.error('browser not found: install chromium or set CHROME_BIN'); process.exit(2) }
 
 const cleanup = () => { try { chrome.kill('SIGKILL') } catch {} }
 process.on('exit', cleanup)
@@ -47,7 +47,7 @@ for (let attempt = 0; attempt < 60; attempt += 1) {
     if (target !== undefined) break
   } catch {}
 }
-if (target === undefined) { console.error('CDP-цель не получена: браузер не поднялся'); process.exit(1) }
+if (target === undefined) { console.error('no CDP target: the browser did not come up'); process.exit(1) }
 
 const socket = new WebSocket(target.webSocketDebuggerUrl)
 let nextId = 1
@@ -95,9 +95,9 @@ await sleep(Number(process.env.PAGE_WAIT_MS ?? 9000))
 
 const text = await send('Runtime.evaluate', { expression: 'document.body.innerText.slice(0, 400)', returnByValue: true })
 const body = String(text.result?.value ?? '')
-if (/Failed to load plugins/i.test(body)) note(`страница показала экран отказа: ${body.slice(0, 160)}`)
+if (/Failed to load plugins/i.test(body)) note(`the page showed the failure screen: ${body.slice(0, 160)}`)
 
-console.log(failures.length === 0 ? 'страница загрузилась: отказов в консоли нет' : `страница не загрузилась, отказов: ${failures.length}`)
+console.log(failures.length === 0 ? 'page loaded: no failures in the console' : `page did not load, failures: ${failures.length}`)
 for (const row of failures) console.log(`  ${row.slice(0, 220)}`)
 cleanup()
 process.exit(failures.length === 0 ? 0 : 1)

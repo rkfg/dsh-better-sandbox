@@ -1,15 +1,15 @@
 /**
- * sandbox-allowlist / subprocess: confinement для ripgrep.
+ * sandbox-allowlist / subprocess: confinement for ripgrep.
  *
- * `grep` и `glob` исполняются упакованным ripgrep через `ctx.subprocess`, и этот
- * seam намеренно без confine — ни policy-fence, ни маска до него не дотягиваются.
- * Обёртка прогоняет через bwrap ТОЛЬКО запуск ripgrep, все остальные спавны
- * (git харнесса, терминал, jobs, MCP) уходят в базовый провайдер без изменений.
+ * `grep` and `glob` run through the bundled ripgrep via `ctx.subprocess`, and this
+ * seam is deliberately not confined — neither the policy fence nor the mask reaches it.
+ * The wrapper puts ONLY the ripgrep invocation through bwrap; every other spawn
+ * (the harness's git, the terminal, jobs, MCP) goes to the base provider unchanged.
  *
- * Confinement минимальный: режим read-only, рабочая директория — cwd спавна.
- * Записывать ripgrep нечего, а маски readDenyDirs/readDenyFiles работают в
- * любом confinement'е. Seam синхронный, поэтому argv собирается здесь, а не
- * через `ctx.sandbox.confine` (общие куски — в `masks.js`).
+ * The confinement is minimal: read-only mode, working directory — the spawn's cwd.
+ * ripgrep has nothing to write, and the readDenyDirs/readDenyFiles masks work under
+ * any confinement. The seam is synchronous, so argv is assembled here rather than
+ * through `ctx.sandbox.confine` (the shared pieces live in `masks.js`).
  *
  * @module dsh-sandbox-allowlist/subprocess
  */
@@ -28,18 +28,18 @@ export default class GuardedSubprocessRuntime extends LocalSubprocessRuntime {
 
   warnOnce(key, message) {
     if (this.warned.has(key)) return
-    // Множество растёт вместе с числом разных путей, поэтому оно ограничено:
-    // при переполнении начинается новый цикл, а не бесконечный рост.
+    // The set grows with the number of distinct paths, so it is capped:
+    // on overflow a new cycle starts instead of unbounded growth.
     if (this.warned.size >= WARNED_LIMIT) this.warned.clear()
     this.warned.add(key)
     this.ctx.logger.warn(message)
   }
 
-  /** Функциональная проверка один раз: без bwrap спавн с обёрткой упал бы целиком. */
+  /** A functional check done once: without bwrap a wrapped spawn would fail outright. */
   bwrapAvailable() {
     if (this.bwrapUsable === void 0) {
       this.bwrapUsable = spawnSync('bwrap', ['--version'], { stdio: 'ignore' }).status === 0
-      if (!this.bwrapUsable) this.warnOnce('no-bwrap', 'sandbox-allowlist: bwrap недоступен, ripgrep запускается без confinement — защита чтения для grep/glob не работает')
+      if (!this.bwrapUsable) this.warnOnce('no-bwrap', 'sandbox-allowlist: bwrap is unavailable, ripgrep runs without confinement — read protection for grep/glob does not work')
     }
     return this.bwrapUsable
   }
@@ -52,7 +52,7 @@ export default class GuardedSubprocessRuntime extends LocalSubprocessRuntime {
     const confined = [spec.cwd, ...allow.roots]
     const args = [...bwrapBaseArgs(policy.mode), ...bwrapGuardArgs(allow, policy, confined, (key, message) => this.warnOnce(key, message), false)]
     if (args.length === bwrapBaseArgs(policy.mode).length) return super.spawn(spec)
-    this.ctx.logger.debug?.(`sandbox-allowlist: ripgrep под confinement'ом: ${basename(spec.argv[0])} в ${spec.cwd}`)
+    this.ctx.logger.debug?.(`sandbox-allowlist: ripgrep under confinement: ${basename(spec.argv[0])} in ${spec.cwd}`)
     return super.spawn({ ...spec, argv: ['bwrap', ...args, '--', ...spec.argv] })
   }
 }

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Изолированный полный веб-профиль (dsh-base + dsh-web-app) для проверки клиентской
-# половины и живой правки правил. Свой DSH_HOME внутри репозитория, свой порт;
-# основной профиль не затрагивается.
+# Isolated full web profile (dsh-base + dsh-web-app) for checking the client half and
+# live rule editing. Its own DSH_HOME inside the repository, its own port; the main
+# profile is left alone.
 #
-#   ./scripts/webfull.sh                                  # строки профиля
-#   DSH_BUNDLE=1 ./scripts/webfull.sh                     # форма бандла из node_modules
-#   DSH_UI=1 …                                            # добавить коробку настроек
-#   DSH_PROBE=driver|settings-write|loader …               # добавить зонд
-#   ./scripts/webfull.sh serve                            # сервер висит (для браузера)
+#   ./scripts/webfull.sh                                  # profile entries
+#   DSH_BUNDLE=1 ./scripts/webfull.sh                     # bundle form from node_modules
+#   DSH_UI=1 …                                            # add the Settings package
+#   DSH_PROBE=driver|settings-write|loader …               # add a probe
+#   ./scripts/webfull.sh serve                            # keep the server up (for a browser)
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export DSH_HOME="$root/.dsh-test"
@@ -65,8 +65,8 @@ const lists = (indent) => [
 
 const rows = bundle
   ? [
-      '# состав записей и отключение базовых провайдеров — в patch-слое бандла,',
-      '# здесь только значения списков (так их пишет страница настроек).',
+      '# the entries and the disabling of the built-in providers live in the bundle patch layer,',
+      '# only the list values are here (this is how the Settings page writes them).',
       '- id: sandbox-allowlist',
       "  name: '@rkfg/dsh-sandbox-allowlist/allowlist'",
       ...lists('  '),
@@ -112,6 +112,6 @@ fi
 
 log="$DSH_HOME/logs/webfull-boot.log"
 (cd "$DSH_HOME/run" && timeout "${DSH_TEST_TIMEOUT:-30}" dsh --profile webfull --port "$port" --no-open) >"$log" 2>&1
-echo "=== проблемы запуска ==="
+echo "=== startup problems ==="
 grep -inE "startup failed|did not activate|client-modules|pending \(waiting|failed to import|already declared|Error:" "$log" | head -12
-echo "=== итог: $(grep -cE 'startup failed|did not activate|failed to import' "$log") проблем ==="
+echo "=== total: $(grep -cE 'startup failed|did not activate|failed to import' "$log") problems ==="

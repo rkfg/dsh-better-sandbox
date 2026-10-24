@@ -94,7 +94,7 @@ Paths accept `~` and `~/…`; `~user` does not expand. Rules that cannot apply a
 ./scripts/webfull.sh   # isolated full web profile: bundle form, Settings page, live rule edit
 ```
 
-`check.sh` builds throwaway profiles under `.dsh-test/`, points `DSH_HOME` there and runs a deterministic driver: writes into an allowed directory must report `WROTE`, writes into a denied directory and into `.git` must report `DENIED FS_SANDBOX_DENIED` or `Read-only file system`, reads of the fixture secrets must be refused, and deleting the mask stubs mid-run must be repaired. `webfull.sh` boots the real web stack on its own port and reports activation problems; the expected count is zero.
+`check.sh` builds throwaway profiles under `.dsh-test/`, points `DSH_HOME` there and runs a deterministic driver: writes into an allowed directory must report `WROTE`, writes into a denied directory and into `.git` must report `DENIED FS_SANDBOX_DENIED` or `Read-only file system`, reads of the fixture secrets must be refused, and deleting the mask stubs mid-run must be repaired. Before that it checks syntax, the manifests against the patch layers, the YAML of both patch layers and the language rule above. `webfull.sh` boots the real web stack on its own port and reports activation problems; the expected count is zero.
 
 ## Boundaries
 
@@ -126,7 +126,7 @@ scripts/lint.sh                       node --check over every module
 test/                                 driver and probes used by the contours
 ```
 
-Code comments are in Russian; documentation is English with Russian copies (`README.ru.md`).
+Code, comments and script output are English; `check.sh` fails when Cyrillic shows up anywhere outside `locale/*.json` and the Russian README copies. The page locales are `en` and `zh`, which is what the pinned harness release supports.
 
 ### Renaming a package
 

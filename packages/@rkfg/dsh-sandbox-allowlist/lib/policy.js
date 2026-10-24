@@ -1,10 +1,10 @@
 /**
- * Общие правила «куда писать нельзя» для плагина sandbox-allowlist.
+ * Shared "where writing is forbidden" rules for the sandbox-allowlist plugin.
  *
- * Отказ выражается тем же кодом FS_SANDBOX_DENIED, что и штатная песочница,
- * поэтому инструмент write/edit получает стандартный маркер
- * `[sandbox: file access denied …]` вместе с подсказкой про эскалацию, а bash
- * получает его через denial-сигнатуру раннера («read-only file system»).
+ * The refusal is expressed with the same FS_SANDBOX_DENIED code as the stock sandbox,
+ * so the write/edit tool gets the standard `[sandbox: file access denied …]` marker
+ * together with the escalation hint, and bash gets it through the runner's denial
+ * signature ("read-only file system").
  *
  * @module dsh-sandbox-allowlist/policy
  */
@@ -19,7 +19,7 @@ export const canonical = (path) => {
   }
 }
 
-/** Канонический корень существует и является директорией. */
+/** The canonical root exists and is a directory. */
 export const isDirectory = (path) => {
   try {
     return statSync(path).isDirectory()
@@ -29,9 +29,9 @@ export const isDirectory = (path) => {
 }
 
 /**
- * Найти защищённые записи под корнем: любой файл/каталог с именем из `segments`,
- * на глубине не больше `depth`. Обход ограниченный и дешёвый, результат
- * кэшируется на `ttlMs`, потому что confine() вызывается на каждую команду.
+ * Find protected entries under a root: any file/directory named in `segments`,
+ * at a depth of at most `depth`. The walk is bounded and cheap, and the result is
+ * cached for `ttlMs`, because confine() runs for every command.
  */
 export const findProtectedUnder = (root, segments, depth, skipDirs, ttlMs, cache) => {
   const hit = cache.get(root)
@@ -61,9 +61,9 @@ export const findProtectedUnder = (root, segments, depth, skipDirs, ttlMs, cache
 }
 
 /**
- * Попадает ли канонический путь под защиту по имени компонента. Сравнивается по
- * сегментам, поэтому `.gitignore` не задевает, а `.git/…` и `.git` (gitfile
- * worktree/submodule) — задевает.
+ * Whether a canonical path falls under name protection. The comparison is done by
+ * segments, so `.gitignore` is not affected, while `.git/…` and `.git` (a gitfile of a
+ * worktree/submodule) are.
  */
 export const segmentDenied = (targetPath, segments) => {
   const comparable = targetPath.split(sep)

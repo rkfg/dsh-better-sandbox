@@ -1,7 +1,7 @@
-// Зонд счётчика ревизий слоя настроек: почему update() принимает не любую правку,
-// а только ту, что сделана от актуального снимка. Вызов идёт по таймеру, вне стека
-// активации записи: config-editor берёт лок на package.json профиля, который
-// стартовый проход держит, и вызов прямо из apply() упирается в таймаут блокировки.
+// Probe for the settings layer's revision counter: why update() accepts only an edit made
+// against the current snapshot, not just any edit. The call runs on a timer, outside the
+// entry's activation stack: config-editor takes a lock on the profile's package.json, which
+// the startup pass is holding, so calling straight from apply() hits the lock timeout.
 //
 //   DSH_PROBE=revision ./scripts/webfull.sh
 export const name = 'revision-probe'
@@ -17,32 +17,32 @@ export function apply(ctx) {
     }
     row()
       .then(function (first) {
-        out.push(`ревизия документа: ${first.revision}, полей в value: ${Object.keys(first.value ?? {}).length}`)
-        // Правка от устаревшего снимка: так выглядит второй браузер, который
-        // держит значение до того, как профиль поправился в другом месте.
+        out.push(`document revision: ${first.revision}, fields in value: ${Object.keys(first.value ?? {}).length}`)
+        // An edit made from a stale snapshot: this is what a second browser looks like, one
+        // still holding the value from before the profile was changed somewhere else.
         return ctx.settings.update('sandbox-allowlist', { denySegments: ['.git'] }, first.revision + 1000)
           .then(function () {
-            out.push('устаревшая ревизия: ПРИНЯТА (ожидался отказ — терялась бы чужая правка)')
+            out.push('stale revision: ACCEPTED (a rejection was expected — someone else\'s edit would have been lost)')
           })
           .catch(function (error) {
-            out.push(`устаревшая ревизия: отказ code=${error.code ?? 'нет'} :: ${String(error.message ?? error).slice(0, 120)}`)
+            out.push(`stale revision: rejected code=${error.code ?? 'none'} :: ${String(error.message ?? error).slice(0, 120)}`)
           })
       })
       .then(function () {
         return row()
       })
       .then(function (fresh) {
-        out.push(`ревизия после отказа: ${fresh.revision} (не изменилась)`)
+        out.push(`revision after the rejection: ${fresh.revision} (unchanged)`)
         return ctx.settings.update('sandbox-allowlist', { denySegments: fresh.value.denySegments ?? ['.git'] }, fresh.revision)
           .then(function () {
-            out.push('правка от актуальной ревизии: принята')
+            out.push('edit against the current revision: accepted')
             return row()
           })
           .then(function (after) {
-            out.push(`ревизия после принятой правки: ${after.revision}`)
+            out.push(`revision after the accepted edit: ${after.revision}`)
           })
           .catch(function (error) {
-            out.push(`правка от актуальной ревизии: отказ code=${error.code ?? 'нет'} :: ${String(error.message ?? error).slice(0, 120)}`)
+            out.push(`edit against the current revision: rejected code=${error.code ?? 'none'} :: ${String(error.message ?? error).slice(0, 120)}`)
           })
       })
       .then(function () {
@@ -53,7 +53,7 @@ export function apply(ctx) {
       })
       .catch(function (error) {
         console.log('\n==== REVISION ====')
-        console.log('сбой зонда: ' + String(error && error.message ? error.message : error))
+        console.log('probe failure: ' + String(error && error.message ? error.message : error))
         console.log('==================')
         process.exit(0)
       })

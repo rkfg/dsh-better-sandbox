@@ -50,6 +50,35 @@ sys.exit(1 if problems else 0)
 LANG
 language_status=$?
 
+# A paragraph between the header separator and the body rows silently splits a
+# Markdown table in two, and the rows then render as plain text.
+echo
+echo "### markdown tables"
+python3 - "$root" <<'TABLE'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+skip = {'.git', '.dsh-test', 'node_modules'}
+separator = re.compile(r'^\|[\s:|-]+\|$')
+problems = []
+for path in sorted(root.rglob('*.md')):
+    if skip & set(path.parts):
+        continue
+    lines = path.read_text().splitlines()
+    start = None
+    for number in range(len(lines) + 1):
+        row = number < len(lines) and lines[number].lstrip().startswith('|')
+        if row and start is None:
+            start = number
+        elif not row and start is not None:
+            block = lines[start:number]
+            if len(block) < 2 or not separator.match(block[1].strip()):
+                problems.append(f'{path.relative_to(root)}:{start + 1}: a table block needs its header and separator')
+            start = None
+print('no problems' if not problems else '\n'.join(problems))
+sys.exit(1 if problems else 0)
+TABLE
+table_status=$?
+
 echo
 echo "### manifests and patch-layer references"
 python3 - "$root" <<'META'
@@ -220,4 +249,4 @@ echo
 echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git)"
 run_profile allowtest
 
-exit $((manifest_status || language_status))
+exit $((manifest_status || language_status || table_status))

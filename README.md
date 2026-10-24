@@ -78,14 +78,14 @@ With `@rkfg/dsh-sandbox-allowlist-ui` installed, the Settings dialog gains a **S
 
 | Field | Meaning | Live edit |
 |---|---|---|
-Paths accept `~` and `~/…`; `~user` does not expand. Rules that cannot apply are reported by the plugin (`relative`, `covers-harness`), and rules aimed at a path that does not exist are marked `missing`.
-
 | `writableDirs` | directories outside the workspace that may be written | yes (Settings) |
 | `denySegments` | path names that must stay unwritable inside every writable root | yes (Settings) |
 | `readDenyDirs`, `readDenyFiles` | hidden from reading via a mode-000 mask | yes (Settings) |
 | `denyDepth`, `denyScanTtlMs`, `denySkipDirs` | how the confinement scans for protected names | no (restart) |
 | `maskFallback`, `readDenialSignature` | behaviour when the mask cannot be created, and the denial dialect added for masked reads | no (restart) |
 | `announceInPrompt` | add the rules to the model context | no (restart) |
+
+Paths accept `~` and `~/…`; `~user` does not expand. Rules that cannot apply are reported by the plugin (`relative`, `covers-harness`), and rules aimed at a path that does not exist are marked `missing`.
 
 ## Verifying
 

@@ -79,6 +79,50 @@ sys.exit(1 if problems else 0)
 TABLE
 table_status=$?
 
+# The Russian docs address the reader with the plural form and use the same terms
+# as the code. The word forms below slipped in once; they are listed here escaped,
+# so this file stays English.
+echo
+echo "### russian wording"
+python3 - "$root" <<'WORDS'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+skip = {'.git', '.dsh-test', 'node_modules'}
+forbidden = [
+    (re.compile(r'\b\u043a\u043e\u0440\u043e\u0431\u043a', re.I), 'a delivered unit is a package here: use the neutral Russian term'),
+    (re.compile(r'\b\u043d\u0443\u043b\u0451\u0432', re.I), 'the mask sources are stubs: use the neutral Russian term'),
+    (re.compile(r'\b\u0437\u0430\u043f\u0438\u043d', re.I), 'say that the versions are fixed, in neutral Russian'),
+    (re.compile(r'\b\u0448\u0430\u0440\u044b\b', re.I), 'say "mounted network shares", in neutral Russian'),
+    (re.compile(r'\b\u0448\u0430\u0440\u0430\b', re.I), 'say "mounted network shares", in neutral Russian'),
+    (re.compile(r'\b\u0448\u0430\u0440\u043e\u0432\b', re.I), 'say "mounted network shares", in neutral Russian'),
+    (re.compile(r'\b\u0437\u0432\u0430\u0442\u044c\b', re.I), 'say "invoke", in neutral Russian'),
+    (re.compile(r'\b\u0437\u043e\u0432\u0443\u0442\b', re.I), 'say "call", in neutral Russian'),
+    (re.compile(r'\b\u0442\u044b\b', re.I), 'informal address: address the reader with the plural form'),
+    (re.compile(r'\b\u0442\u0432\u043e\u0439\b', re.I), 'informal address: address the reader with the plural form'),
+    (re.compile(r'\b\u0442\u0432\u043e\u044f\b', re.I), 'informal address: address the reader with the plural form'),
+    (re.compile(r'\b\u0442\u0435\u0431\u044f\b', re.I), 'informal address: address the reader with the plural form'),
+    (re.compile(r'\b\u0432\u044b\u0431\u0438\u0440\u0430\u0439\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u0434\u043e\u0431\u0430\u0432\u044c\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u0441\u043e\u0437\u0434\u0430\u0439\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u043f\u0440\u043e\u0432\u0435\u0440\u044c\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u043e\u0442\u043a\u0440\u043e\u0439\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u043d\u0430\u0436\u043c\u0438\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u0447\u0438\u0442\u0430\u0439\b', re.I), 'imperative is informal: use the plural form'),
+    (re.compile(r'\b\u0441\u043c\u043e\u0442\u0440\u0438\b', re.I), 'imperative is informal: use the plural form'),
+]
+problems = []
+for path in sorted(root.rglob('*.ru.md')):
+    if skip & set(path.parts):
+        continue
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        for pattern, why in forbidden:
+            if pattern.search(line):
+                problems.append(f'{path.relative_to(root)}:{number}: {why}: {line.strip()[:60]}')
+print('no problems' if not problems else '\n'.join(problems))
+sys.exit(1 if problems else 0)
+WORDS
+russian_status=$?
+
 echo
 echo "### manifests and patch-layer references"
 python3 - "$root" <<'META'
@@ -87,14 +131,14 @@ root = pathlib.Path(sys.argv[1])
 max_icon = 256 * 1024
 problems = []
 for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
-    box = root / 'packages' / pkg
-    data = json.loads((box / 'package.json').read_text())
+    pkgdir = root / 'packages' / pkg
+    data = json.loads((pkgdir / 'package.json').read_text())
     exports = data.get('exports', {})
     for key in ('./package.json', './locale/*.json'):
         if key not in exports:
             problems.append(f'{pkg}: missing exports key {key}')
     for lang in ('en', 'zh'):
-        path = box / 'locale' / f'{lang}.json'
+        path = pkgdir / 'locale' / f'{lang}.json'
         if not path.is_file():
             problems.append(f'{pkg}: missing locale/{lang}.json')
             continue
@@ -108,8 +152,8 @@ for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
         if not isinstance(icon, str) or icon.startswith(('/', 'http')) or '..' in icon:
             problems.append(f'{pkg}: invalid icon path {icon!r}')
         else:
-            target = (box / icon).resolve()
-            if not str(target).startswith(str(box.resolve())):
+            target = (pkgdir / icon).resolve()
+            if not str(target).startswith(str(pkgdir.resolve())):
                 problems.append(f'{pkg}: icon outside the package: {icon}')
             elif target.suffix.lower() not in ('.svg', '.png', '.jpg', '.jpeg', '.webp'):
                 problems.append(f'{pkg}: unsupported icon format {icon}')
@@ -117,7 +161,7 @@ for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
                 problems.append(f'{pkg}: icon file not found: {icon}')
             elif target.stat().st_size > max_icon:
                 problems.append(f'{pkg}: icon larger than 256 KiB: {icon}')
-    client_js = box / 'client.js'
+    client_js = pkgdir / 'client.js'
     if client_js.is_file():
         found = re.search(r'__ModuleLoader__\.load\(\{\s*id:\s*"([^"]+)"', client_js.read_text(), re.S)
         if found is None:
@@ -128,7 +172,7 @@ for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
     for needed in ('locale', 'icon.svg'):
         if needed not in files:
             problems.append(f'{pkg}: {needed} missing from files')
-    patch = box / 'cordis.patch.yml'
+    patch = pkgdir / 'cordis.patch.yml'
     prefix = data['name'] + '/'
     for name in set(re.findall(r'name:\s*([\w@/-]+)', patch.read_text())):
         if not name.startswith(prefix):
@@ -137,7 +181,7 @@ for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
         target = exports.get(key)
         if target is None:
             problems.append(f'{pkg}: the patch references {key}, but exports has no such key')
-        elif not (box / target).is_file():
+        elif not (pkgdir / target).is_file():
             problems.append(f'{pkg}: {key} → {target}: file does not exist')
 print('no problems' if not problems else '\n'.join(problems))
 sys.exit(1 if problems else 0)
@@ -249,4 +293,4 @@ echo
 echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git)"
 run_profile allowtest
 
-exit $((manifest_status || language_status || table_status))
+exit $((manifest_status || language_status || table_status || russian_status))

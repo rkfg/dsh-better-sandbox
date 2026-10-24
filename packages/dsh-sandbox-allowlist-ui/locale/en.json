@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sandbox Settings",
+    "description": "Edit sandbox write grants and read-protected paths from Settings; changes apply without a restart."
+  }
+}

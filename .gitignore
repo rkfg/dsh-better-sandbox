@@ -1,0 +1,10 @@
+# локальный контур проверки: профили, фикстуры, логи
+.dsh-test/
+
+# установочные артефакты
+node_modules/
+packages/*/node_modules/
+packages/*/lib/.mask/
+*.bak-*
+*.log
+package-lock.json

@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Изолированный полный веб-профиль (dsh-base + dsh-web-app) для проверки клиентской
+# половины и живой правки правил. Свой DSH_HOME внутри репозитория, свой порт;
+# основной профиль не затрагивается.
+#
+#   ./scripts/webfull.sh                                  # строки профиля
+#   DSH_BUNDLE=1 ./scripts/webfull.sh                     # форма бандла из node_modules
+#   DSH_UI=1 …                                            # добавить коробку настроек
+#   DSH_PROBE=driver|settings-write|loader …               # добавить зонд
+#   ./scripts/webfull.sh serve                            # сервер висит (для браузера)
+set -uo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+export DSH_HOME="$root/.dsh-test"
+prof="$DSH_HOME/profiles/webfull"
+port=${DSH_TEST_PORT:-3181}
+
+rm -rf "$prof"
+mkdir -p "$prof" "$DSH_HOME/logs"
+echo '[]' > "$prof/cordis.yml"
+cp -r "$root/packages/dsh-sandbox-allowlist/lib" "$prof/sandbox-allowlist"
+printf '{"type":"module"}\n' > "$prof/sandbox-allowlist/package.json"
+
+if [[ -n ${DSH_UI:-} ]]; then
+  mkdir -p "$prof/node_modules"
+  cp -r "$root/packages/dsh-sandbox-allowlist-ui" "$prof/node_modules/dsh-sandbox-allowlist-ui"
+fi
+if [[ -n ${DSH_BUNDLE:-} ]]; then
+  mkdir -p "$prof/node_modules"
+  cp -r "$root/packages/dsh-sandbox-allowlist" "$prof/node_modules/dsh-sandbox-allowlist"
+fi
+
+node - "$prof" "$root" <<'NODE'
+const fs = require('fs')
+const path = require('path')
+const [, , prof, root] = process.argv
+const bundle = Boolean(process.env.DSH_BUNDLE)
+const probe = process.env.DSH_PROBE ?? ''
+const allowed = `${root}/.dsh-test/allowed`
+const secret = `${root}/.dsh-test/run/secretdir`
+
+const pkg = {
+  name: 'dsh-profile-webfull',
+  private: true,
+  dependencies: {},
+  dsh: {
+    profile: {
+      bundles: [
+        '@deepseek-ai/dsh-base',
+        '@deepseek-ai/dsh-web-app',
+        ...(bundle ? ['dsh-sandbox-allowlist'] : []),
+        ...(process.env.DSH_UI ? ['dsh-sandbox-allowlist-ui'] : []),
+      ],
+    },
+  },
+}
+fs.writeFileSync(path.join(prof, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
+
+const lists = (indent) => [
+  `${indent}config:`,
+  `${indent}  writableDirs:`,
+  `${indent}    - ${allowed}`,
+  `${indent}  readDenyDirs:`,
+  `${indent}    - ${secret}`,
+]
+
+const rows = bundle
+  ? [
+      '# состав записей и отключение базовых провайдеров — в patch-слое бандла,',
+      '# здесь только значения списков (так их пишет страница настроек).',
+      '- id: sandbox-allowlist',
+      '  name: dsh-sandbox-allowlist/allowlist',
+      ...lists('  '),
+    ]
+  : [
+      '- id: fs-sandbox',
+      "  name: '@deepseek-ai/dsh-fs-sandbox'",
+      '  disabled: true',
+      '- id: sandbox',
+      "  name: '@deepseek-ai/dsh-sandbox-local'",
+      '  disabled: true',
+      '- id: subprocess',
+      "  name: '@deepseek-ai/dsh-subprocess-local'",
+      '  disabled: true',
+      '- insert:',
+      '    - id: sandbox-allowlist',
+      '      name: ./sandbox-allowlist/allowlist.js',
+      ...lists('      '),
+      '    - id: fs-allowlist',
+      '      name: ./sandbox-allowlist/fs.js',
+      '    - id: sandbox-allowlist-runner',
+      '      name: ./sandbox-allowlist/runner.js',
+      '    - id: subprocess-guard',
+      '      name: ./sandbox-allowlist/subprocess.js',
+    ]
+
+const probes = { driver: 'driver', 'settings-write': 'settings-write-probe', loader: 'loader-probe' }
+if (probes[probe] !== void 0) {
+  const file = `${probes[probe]}.js`
+  fs.copyFileSync(path.join(root, 'test', file), path.join(prof, 'sandbox-allowlist', file))
+  rows.push('- insert:', `    - id: ${probes[probe]}`, `      name: ./sandbox-allowlist/${file}`)
+}
+fs.writeFileSync(path.join(prof, 'cordis.patch.yml'), `${rows.join('\n')}\n`)
+NODE
+
+mkdir -p "$DSH_HOME/allowed" "$DSH_HOME/run/secretdir/nested"
+echo secret > "$DSH_HOME/run/secretdir/k.txt"
+echo secret > "$DSH_HOME/run/secretdir/nested/k2.txt"
+
+if [[ ${1:-} == serve ]]; then
+  exec dsh --profile webfull --port "$port" --no-open
+fi
+
+log="$DSH_HOME/logs/webfull-boot.log"
+(cd "$DSH_HOME/run" && timeout "${DSH_TEST_TIMEOUT:-30}" dsh --profile webfull --port "$port" --no-open) >"$log" 2>&1
+echo "=== проблемы запуска ==="
+grep -inE "startup failed|did not activate|client-modules|pending \(waiting|failed to import|already declared|Error:" "$log" | head -12
+echo "=== итог: $(grep -cE 'startup failed|did not activate|failed to import' "$log") проблем ==="

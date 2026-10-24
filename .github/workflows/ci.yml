@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  contour:
+    runs-on: ubuntu-latest
+    env:
+      HARNESS_VERSION: 0.2.1-rc.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Sandbox tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          bwrap --version
+          sysctl kernel.unprivileged_userns_clone || true
+
+      - name: Install the harness CLI
+        run: npm install --global @deepseek-ai/dsh@${HARNESS_VERSION}
+
+      - name: Syntax and manifest checks
+        run: bash scripts/lint.sh
+
+      - name: Headless contour (base providers vs plugin)
+        run: bash scripts/check.sh
+
+      - name: Web contour (bundle plus Settings page)
+        run: DSH_BUNDLE=1 DSH_UI=1 DSH_PROBE=driver DSH_TEST_TIMEOUT=90 bash scripts/webfull.sh

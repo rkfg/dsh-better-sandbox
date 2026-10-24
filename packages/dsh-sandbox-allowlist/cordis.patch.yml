@@ -1,0 +1,26 @@
+# dsh-sandbox-allowlist: песочница с дополнительными корнями на запись, защитой
+# .git от изменений и защитой секретов от чтения.
+#
+# Значения списков (writableDirs, readDenyDirs, readDenyFiles) намеренно НЕ здесь:
+# их задаёт профиль (или страница настроек), слой бандла описывает только состав
+# записей и то, какие базовые провайдеры они заменяют.
+- id: fs-sandbox
+  name: '@deepseek-ai/dsh-fs-sandbox'
+  disabled: true
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  disabled: true
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+  disabled: true
+- insert:
+    - id: sandbox-allowlist
+      name: dsh-sandbox-allowlist/allowlist
+    - id: fs-allowlist
+      name: dsh-sandbox-allowlist/fs
+    - id: sandbox-allowlist-runner
+      name: dsh-sandbox-allowlist/runner
+    - id: subprocess-guard
+      name: dsh-sandbox-allowlist/subprocess
+    - id: sandbox-guard-api
+      name: dsh-sandbox-allowlist/guard-api

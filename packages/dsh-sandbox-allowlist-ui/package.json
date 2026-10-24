@@ -1,0 +1,64 @@
+{
+  "name": "dsh-sandbox-allowlist-ui",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Settings page for the DeepSeek Harness sandbox-allowlist plugin; edits apply without a restart.",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-connection"
+      ]
+    }
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "0.2.1-rc.2"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rkfg/dsh-sandbox-allowlist.git",
+    "directory": "packages/dsh-sandbox-allowlist-ui"
+  },
+  "bugs": {
+    "url": "https://github.com/rkfg/dsh-sandbox-allowlist/issues"
+  },
+  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/dsh-sandbox-allowlist-ui",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "settings",
+    "sandbox"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "rkfg <rkfg@rkfg.me>",
+  "scripts": {
+    "check": "bash ../../scripts/check.sh"
+  }
+}

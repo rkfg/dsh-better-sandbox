@@ -1,0 +1,65 @@
+{
+  "name": "dsh-sandbox-allowlist",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names, read-protected paths.",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": "./lib/allowlist.js",
+    "./bundle": "./lib/bundle.js",
+    "./fs": "./lib/fs.js",
+    "./runner": "./lib/runner.js",
+    "./subprocess": "./lib/subprocess.js",
+    "./guard-api": "./lib/guard-api.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./allowlist": "./lib/allowlist.js"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-fs-sandbox": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox-local": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.2",
+    "@deepseek-ai/cosmokit": "0.2.1-rc.2"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rkfg/dsh-sandbox-allowlist.git",
+    "directory": "packages/dsh-sandbox-allowlist"
+  },
+  "bugs": {
+    "url": "https://github.com/rkfg/dsh-sandbox-allowlist/issues"
+  },
+  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/dsh-sandbox-allowlist",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "sandbox",
+    "allowlist",
+    "bubblewrap"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "rkfg <rkfg@rkfg.me>",
+  "scripts": {
+    "check": "bash ../../scripts/check.sh"
+  }
+}

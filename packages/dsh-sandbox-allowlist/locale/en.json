@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sandbox Allowlist",
+    "description": "Writable roots beyond the workspace, write-protected path names, and read-protected paths."
+  }
+}

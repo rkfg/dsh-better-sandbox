@@ -78,6 +78,8 @@ With `@rkfg/dsh-sandbox-allowlist-ui` installed, the Settings dialog gains a **S
 
 | Field | Meaning | Live edit |
 |---|---|---|
+Paths accept `~` and `~/…`; `~user` does not expand. Rules that cannot apply are reported by the plugin (`relative`, `covers-harness`), and rules aimed at a path that does not exist are marked `missing`.
+
 | `writableDirs` | directories outside the workspace that may be written | yes (Settings) |
 | `denySegments` | path names that must stay unwritable inside every writable root | yes (Settings) |
 | `readDenyDirs`, `readDenyFiles` | hidden from reading via a mode-000 mask | yes (Settings) |
@@ -105,6 +107,7 @@ Read them before trusting the setup — the plugin narrows what an agent can rea
 - Names of protected directories stay visible in a parent listing: the mask replaces the mount point, it does not filter the parent.
 - `git` over SSH inside a sandboxed command stops working while `~/.ssh` is read-protected; use `ssh-agent` or an extracted `known_hosts`.
 - Deleting a protected directory from outside (an escalated command) is not prevented.
+- The Settings page blocks unusable syntax (relative path without `~/`, `~user`, duplicate) in red and refuses to save; it cannot check existence, because the page has no channel to the plugin service, so a rule for a missing directory is accepted and inert until that directory appears.
 
 ## Related work
 

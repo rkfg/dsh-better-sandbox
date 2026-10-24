@@ -15,6 +15,12 @@ The bundle layer (`cordis.patch.yml`) disables the built-in providers it replace
 | `sandbox-guard-api` | `lib/guard-api.js` | Remote `sandboxGuard`: `state()`, `validate()` |
 | `sandbox-allowlist-bundle` | `lib/bundle.js` | the group that carries the children above |
 
+Paths may be written with `~` or `~/…`: they are expanded against `os.homedir()`
+before anything else, so `~/.cache` and `/home/you/.cache` are the same rule. The
+`~user` form is not expanded. Rules that cannot apply are kept in `rejected`
+(`relative`, `covers-harness`) and rules pointing at a path that does not exist
+are marked `missing` — visible through `sandboxGuard.state()`.
+
 Profile configuration stays to values only:
 
 ```yaml
@@ -79,4 +85,4 @@ Independent: refusal text belongs to the conversation, not to the system prefix,
 - **Processes outside the seams are uncovered** — the harness' own git integration and MCP servers do not go through `ctx.subprocess`, by design.
 - **`git` over SSH stops working inside a confined command** while `~/.ssh` is read-protected; `ssh-agent` or an extracted `known_hosts` is required.
 - **Protected directory names stay visible** in a parent listing — the mask replaces the mount point instead of filtering the parent.
-- **Validation is host-side** — `sandboxGuard.validate` refuses paths that would cover the harness or the workspace, but the Settings form saves whatever it is given.
+- **Existence is checked only on the host** — the Settings form blocks unusable syntax (relative paths without `~/`, `~user`, duplicates) but cannot know whether a path exists, since the page has no way to call the plugin service; such a rule stays inert until the directory appears, and `sandboxGuard.state()` reports it as `missing`.

@@ -23,6 +23,17 @@ The client declares the services it needs by name: `slots`, `locale`, `connectio
 
 Per `cookbook/adding-a-remote-api.md`, a client consuming a plugin namespace must inject `remote.<namespace>`, and that namespace exists only because the build pipeline generates the `./typert` and `./remote` artifacts. A hand-written JavaScript package has no such artifacts, so the form reads `ctx.remote.settings.describe()` (no arguments) and writes `ctx.remote.settings.update('sandbox-allowlist', patch, revision)` — the same path the built-in settings dialog uses. The host-side `sandboxGuard` service remains available to tools and tests.
 
+## Validation
+
+The form checks each line before saving and refuses to write while a field has
+problems, listing them in red under that field: a path that is neither absolute
+nor `~/…`, the unsupported `~user` form, and a rule repeated in the same field.
+Existence is deliberately not checked here — the browser cannot reach the plugin
+service — so a rule for a directory that does not exist yet is accepted and stays
+inert until it appears. `test/settings-ui-probe.mjs` drives this in a real
+browser: it opens the section, writes unusable rules, presses Save and asserts
+that all four captions appeared and the write was blocked.
+
 ## Model Experience
 
 ### Influence on the model context
@@ -39,6 +50,6 @@ Independent: prefix reuse is affected only by the announcement block owned by `@
 
 ## Known Limitations and Deferred Work
 
-- **No client-side path validation** — `sandboxGuard.validate` on the host rejects paths that would cover the harness or the workspace, but the form saves what it is given; such a rule simply never applies.
+- **No existence check in the form** — the page cannot call the plugin service, so it validates syntax only; a rule pointing at a missing directory is saved and reported by the host as `missing` in `sandboxGuard.state()`.
 - **Volatile fields only** — `denyDepth`, `denyScanTtlMs`, `denySkipDirs`, `maskFallback`, `readDenialSignature` are not shown: provider constructors read them, so they require a restart.
 - **No apply-preview** — the form does not show which existing rules changed state (newly readable, newly protected) after a save.

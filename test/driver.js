@@ -62,6 +62,7 @@ export async function apply(ctx) {
   out.push(`policy: mode=${policy.mode} root=${policy.workspaceRoot}`)
   out.push(`write roots: ${JSON.stringify(allow?.roots ?? null)}, denySegments: ${JSON.stringify(allow?.denySegments ?? null)}`)
   out.push(`readDenyDirs: ${JSON.stringify(allow?.readDirs ?? null)}, readDenyFiles: ${JSON.stringify(allow?.readFiles ?? null)}, mask: ${allow?.mask?.available ? '000' : 'fallback'}`)
+  out.push(`тильда раскрыта: ${JSON.stringify((allow?.roots ?? []).filter((root) => root.includes('/.cache')))}, отброшено/подозрительно: ${JSON.stringify(allow?.rejected ?? null)}`)
 
   // фикстуры: репозиторий, вложенный репозиторий, «секреты»
   mkdirSync(`${cwd}/normal`, { recursive: true })

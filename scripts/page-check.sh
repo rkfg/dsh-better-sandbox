@@ -4,7 +4,8 @@
 # клиентская половина может быть сломана при полностью рабочем хосте, и хост-логи
 # об этом молчат.
 #
-#   ./scripts/page-check.sh            # профиль сам, браузер сам
+#   ./scripts/page-check.sh            # загрузка страницы + UI-тест раздела настроек
+#   UI_PROBE=0 ./scripts/page-check.sh # только загрузка страницы
 #   CHROME_BIN=google-chrome ./scripts/page-check.sh
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,6 +31,9 @@ fi
 
 node "$root/test/page-probe.mjs" "$url"
 status=$?
+if [[ $status -eq 0 && ${UI_PROBE:-1} != 0 ]]; then
+  node "$root/test/settings-ui-probe.mjs" "$url" || status=$?
+fi
 kill "$server" 2>/dev/null
 wait "$server" 2>/dev/null
 trap - EXIT

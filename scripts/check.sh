@@ -159,6 +159,8 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
       config:
         writableDirs:
           - ./relative-must-be-skipped
+          - ~/.cache
+          - ~/.dsh-probe-missing
           - $DSH_HOME/allowed
         readDenyDirs:
           - $DSH_HOME/run/secretdir

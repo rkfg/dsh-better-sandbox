@@ -42,6 +42,31 @@ window.__ModuleLoader__.load({
 		const lines = (value) => (Array.isArray(value) ? value : []).map((item) => String(item)).join("\n")
 		const toLines = (text) => text.split("\n").map((line) => line.trim()).filter((line) => line !== "")
 
+		/**
+		 * Проверка строки правила силами браузера: абсолютный путь или форма ~/…,
+		 * отсутствие ~user и дубликатов. Существование пути браузер проверить не может
+		 * (из страницы в сервис плагина дорога нет), поэтому за этим — хост: там правило
+		 * попадает в `rejected` с причиной `missing`.
+		 *
+		 * @param text - содержимое поля, по строке на правило.
+		 * @returns список проблем: { entry, reason }.
+		 */
+		const checkLines = function (text) {
+			const problems = []
+			const seen = new Set()
+			for (const raw of String(text).split("\n")) {
+				const line = raw.trim()
+				if (line === "") continue
+				if (line !== "~" && !line.startsWith("~/")) {
+					if (line.startsWith("~")) problems.push({ entry: line, reason: "tildeUser" })
+					else if (!line.startsWith("/")) problems.push({ entry: line, reason: "relative" })
+				}
+				if (seen.has(line)) problems.push({ entry: line, reason: "duplicate" })
+				else seen.add(line)
+			}
+			return problems
+		}
+
 		function SandboxSection(props) {
 			const t = props.t
 			const api = props.api
@@ -50,6 +75,7 @@ window.__ModuleLoader__.load({
 			const [status, setStatus] = useState(t("loading"))
 			const [error, setError] = useState("")
 			const [busy, setBusy] = useState(false)
+			const [issues, setIssues] = useState({})
 
 			const reload = useCallback(function () {
 				setBusy(true)
@@ -67,6 +93,9 @@ window.__ModuleLoader__.load({
 						const value = descriptor.value ?? {}
 						for (const field of FIELDS) values[field.key] = lines(value[field.key])
 						setDrafts(values)
+						const found = {}
+						for (const field of FIELDS) found[field.key] = checkLines(values[field.key])
+						setIssues(found)
 						setError("")
 						setStatus(t("revision") + " " + descriptor.revision)
 					})
@@ -84,6 +113,17 @@ window.__ModuleLoader__.load({
 
 			const save = function () {
 				if (state === null || drafts === null) return
+				const found = {}
+				let broken = 0
+				for (const field of FIELDS) {
+					found[field.key] = checkLines(drafts[field.key])
+					broken += found[field.key].length
+				}
+				setIssues(found)
+				if (broken > 0) {
+					setError(t("blocked"))
+					return
+				}
 				const patch = {}
 				for (const field of FIELDS) {
 					const next = toLines(drafts[field.key])
@@ -122,7 +162,7 @@ window.__ModuleLoader__.load({
 						h("span", { style: style.label }, t(field.key)),
 						h("span", { style: style.hint }, t(field.hintKey)),
 						h("textarea", {
-							style: style.area,
+							style: (issues[field.key] && issues[field.key].length > 0) ? Object.assign({}, style.area, { borderColor: "var(--dsw-alias-state-error-primary, #c9541f)" }) : style.area,
 							value: drafts === null ? "" : drafts[field.key],
 							disabled: busy,
 							spellCheck: false,
@@ -131,8 +171,20 @@ window.__ModuleLoader__.load({
 								setDrafts(function (prev) {
 									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = value; return next })())
 								})
+								setIssues(function (prev) {
+									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = checkLines(value); return next })())
+								})
 							},
-						})
+						}),
+						issues[field.key] && issues[field.key].length > 0
+							? h(
+									"div",
+									{ style: style.error },
+									issues[field.key].map(function (problem) {
+										return h("div", { key: problem.reason + problem.entry }, t("bad" + problem.reason.charAt(0).toUpperCase() + problem.reason.slice(1)) + ": " + problem.entry)
+									})
+								)
+							: null
 					)
 				}),
 				h(
@@ -167,6 +219,10 @@ window.__ModuleLoader__.load({
 					hintReadDenyDirs: "keys, tokens, personal data",
 					hintReadDenyFiles: "one file per line",
 					hintDenySegments: "for example .git",
+					blocked: "some lines are unusable — fix the marked entries before saving",
+					badRelative: "needs an absolute path or ~/…",
+					badTildeUser: "~user form is not supported, use ~/…",
+					badDuplicate: "repeated rule",
 				},
 				zh: {
 					nav: "沙盒",
@@ -186,6 +242,10 @@ window.__ModuleLoader__.load({
 					hintReadDenyDirs: "密钥、令牌、个人数据",
 					hintReadDenyFiles: "每行一个文件",
 					hintDenySegments: "例如 .git",
+					blocked: "部分条目无法使用 — 请先修正标记的行",
+					badRelative: "需要绝对路径或 ~/…",
+					badTildeUser: "不支持 ~user 形式，请使用 ~/…",
+					badDuplicate: "规则重复",
 				},
 			})
 			const t = ctx.locale.bind("settings.sandbox")

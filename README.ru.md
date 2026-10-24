@@ -32,7 +32,18 @@
 
 ```bash
 dsh plugin --profile web add @rkfg/dsh-sandbox-allowlist @rkfg/dsh-sandbox-allowlist-ui
-# или из рабочего дерева:
+```
+
+Из GitHub — репозиторий это воркспейс из двух пакетов, поэтому git-URL обязан указывать на нужный подпакет:
+
+```bash
+dsh plugin --profile web add "git+https://github.com/rkfg/dsh-sandbox-allowlist.git#path:/packages/@rkfg/dsh-sandbox-allowlist"
+dsh plugin --profile web add "git+https://github.com/rkfg/dsh-sandbox-allowlist.git#path:/packages/@rkfg/dsh-sandbox-allowlist-ui"
+```
+
+Из рабочего дерева (с пересозданием нулёвок маски и копией `package.json` профиля):
+
+```bash
 ./scripts/install.sh --profile web
 ```
 

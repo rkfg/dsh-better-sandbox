@@ -36,11 +36,16 @@ From npm (installs both packages into the profile):
 dsh plugin --profile web add @rkfg/dsh-sandbox-allowlist @rkfg/dsh-sandbox-allowlist-ui
 ```
 
-From this repository:
+From GitHub. This is a workspace of two packages, so the git URL must point at one of them — installing the repository root would install the private workspace package and no plugin:
 
 ```bash
-dsh plugin --profile web add git+https://github.com/rkfg/dsh-sandbox-allowlist.git
-# or, from a working tree, with the mask stubs and a package.json backup handled for you:
+dsh plugin --profile web add "git+https://github.com/rkfg/dsh-sandbox-allowlist.git#path:/packages/@rkfg/dsh-sandbox-allowlist"
+dsh plugin --profile web add "git+https://github.com/rkfg/dsh-sandbox-allowlist.git#path:/packages/@rkfg/dsh-sandbox-allowlist-ui"
+```
+
+From a working tree, with the mask stubs and a profile `package.json` backup handled for you:
+
+```bash
 ./scripts/install.sh --profile web
 ```
 

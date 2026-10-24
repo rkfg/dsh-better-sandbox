@@ -4,14 +4,14 @@
  * A denial that lands in the runner's denial signature is marked separately —
  * only then does the bash tool show the policy marker with the escalation hint.
  *
- * @module dsh-sandbox-allowlist/driver
+ * @module dsh-better-sandbox/driver
  */
 import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const name = 'sandbox-allowlist-driver'
+export const name = 'better-sandbox-driver'
 export const inject = ['fs', 'sandboxPolicy', 'sandbox', 'subprocess']
 
 const readAll = (handle, stream) => handle.collected?.[stream]?.readFrom(0)?.text ?? ''
@@ -55,7 +55,7 @@ const pathOf = (cwd, rel) => new URL(`file://${cwd}/${rel}`).pathname
 
 export async function apply(ctx) {
   const cwd = process.cwd()
-  const allow = ctx.get('sandboxAllowlist')
+  const allow = ctx.get('betterSandbox')
   const guard = ctx.get('sandboxGuard')
   const policy = ctx.sandboxPolicy.resolve()
   const out = []

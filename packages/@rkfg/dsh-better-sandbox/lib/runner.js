@@ -1,5 +1,5 @@
 /**
- * sandbox-allowlist / sandbox: an extension of child-process confinement.
+ * better-sandbox / sandbox: an extension of child-process confinement.
  *
  * Takes the ready argv from LocalSandboxProvider (runner choice, denial signatures and
  * diagnostic rules stay the base ones) and inserts its own arguments before `--`, that
@@ -10,7 +10,7 @@
  * Landlock can neither subtract write access from a broader rule nor deny reading a
  * subpath — the protection cannot be expressed there, which a warning reports.
  *
- * @module dsh-sandbox-allowlist/runner
+ * @module dsh-better-sandbox/runner
  */
 import LocalSandboxProvider from '@deepseek-ai/dsh-sandbox-local'
 import { basename } from 'node:path'
@@ -25,13 +25,13 @@ const detectRunner = (argv) => {
 
 const WARNED_LIMIT = 64
 
-export default class AllowlistSandboxProvider extends LocalSandboxProvider {
-  static inject = ['sandboxAllowlist']
+export default class BetterSandboxProvider extends LocalSandboxProvider {
+  static inject = ['betterSandbox']
 
   warned = new Set()
 
   get allow() {
-    return this.ctx.sandboxAllowlist
+    return this.ctx.betterSandbox
   }
 
   warnOnce(key, message) {
@@ -52,13 +52,13 @@ export default class AllowlistSandboxProvider extends LocalSandboxProvider {
     if (separator === -1) return base
     const runner = detectRunner(base.argv)
     if (runner === 'unknown') {
-      this.warnOnce(`unknown-${base.argv[0]}`, `sandbox-allowlist: runner ${JSON.stringify(base.argv[0])} gets neither grants nor protection`)
+      this.warnOnce(`unknown-${base.argv[0]}`, `better-sandbox: runner ${JSON.stringify(base.argv[0])} gets neither grants nor protection`)
       return base
     }
     if (runner === 'landlock' && (allow.readDirs.length > 0 || allow.readFiles.length > 0 || allow.denySegments.length > 0)) {
       this.warnOnce(
         'landlock-guards',
-        'sandbox-allowlist: landlock cannot subtract write access or deny reading a subpath — denySegments and readDeny are not applied for it',
+        'better-sandbox: landlock cannot subtract write access or deny reading a subpath — denySegments and readDeny are not applied for it',
       )
     }
     const result = runner === 'bwrap'

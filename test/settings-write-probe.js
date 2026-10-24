@@ -1,5 +1,5 @@
 export const name = 'settings-write-probe'
-export const inject = ['settings', 'sandboxAllowlist', 'fs']
+export const inject = ['settings', 'betterSandbox', 'fs']
 
 // Calling from apply() would deadlock: settings.update reloads the profile layers and
 // waits for the fiber of the calling entry to finish. That is why the write happens
@@ -10,17 +10,17 @@ export async function apply(ctx) {
     const run = async () => {
       console.log('\n==== WRITE ====')
       const rows = await ctx.settings.describe()
-      const mine = rows.find((row) => row.ns === 'sandbox-allowlist')
+      const mine = rows.find((row) => row.ns === 'better-sandbox')
       console.log(`page present=${Boolean(mine)} revision=${mine?.revision} fields=${JSON.stringify(Object.keys(mine?.value ?? {}))}`)
-      console.log('before: readDirs=' + JSON.stringify(ctx.sandboxAllowlist.readDirs))
+      console.log('before: readDirs=' + JSON.stringify(ctx.betterSandbox.readDirs))
       try {
-        const result = await ctx.settings.update('sandbox-allowlist', { readDenyDirs: [secret] })
+        const result = await ctx.settings.update('better-sandbox', { readDenyDirs: [secret] })
         console.log('update: ok ' + JSON.stringify(result ?? null).slice(0, 120))
       } catch (error) {
         console.log('update failed: ' + String(error?.message ?? error).slice(0, 200))
       }
       await new Promise((resolve) => setTimeout(resolve, 1200))
-      console.log('after: readDirs=' + JSON.stringify(ctx.sandboxAllowlist.readDirs))
+      console.log('after: readDirs=' + JSON.stringify(ctx.betterSandbox.readDirs))
       for (const [label, file] of [['old directory (no longer read-protected)', 'secretdir/k.txt'], ['new directory (just read-protected)', 'secretdir/nested/k2.txt']]) {
         const target = await ctx.fs.resolve(`${process.cwd()}/${file}`)
         try {

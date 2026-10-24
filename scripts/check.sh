@@ -11,8 +11,8 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export DSH_HOME="$root/.dsh-test"
 profiles="$DSH_HOME/profiles"
-src="$root/packages/@rkfg/dsh-sandbox-allowlist/lib"
-ui="$root/packages/@rkfg/dsh-sandbox-allowlist-ui"
+src="$root/packages/@rkfg/dsh-better-sandbox/lib"
+ui="$root/packages/@rkfg/dsh-better-sandbox-ui"
 
 command -v dsh >/dev/null || { echo "the harness CLI is required: npm install --global @deepseek-ai/dsh" >&2; exit 1; }
 command -v bwrap >/dev/null || { echo "bubblewrap (bwrap) is required for the confinement checks" >&2; exit 1; }
@@ -130,7 +130,7 @@ import json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 max_icon = 256 * 1024
 problems = []
-for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
+for pkg in ('@rkfg/dsh-better-sandbox', '@rkfg/dsh-better-sandbox-ui'):
     pkgdir = root / 'packages' / pkg
     data = json.loads((pkgdir / 'package.json').read_text())
     exports = data.get('exports', {})
@@ -195,7 +195,7 @@ import pathlib, sys
 import yaml
 root = pathlib.Path(sys.argv[1])
 problems = []
-for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
+for pkg in ('@rkfg/dsh-better-sandbox', '@rkfg/dsh-better-sandbox-ui'):
     path = root / 'packages' / pkg / 'cordis.patch.yml'
     try:
         rows = yaml.safe_load(path.read_text())
@@ -227,17 +227,17 @@ make_profile allowtest '@deepseek-ai/dsh-base' '@deepseek-ai/dsh-headless'
 # The plugin modules are copied into the profile folder: this contour checks the provider
 # entries, while scripts/webfull.sh checks the bundle form.
 for prof in basetest allowtest; do
-  mkdir -p "$profiles/$prof/sandbox-allowlist"
-  printf '{"type":"module"}\n' > "$profiles/$prof/sandbox-allowlist/package.json"
-  cp -f "$src"/*.js "$profiles/$prof/sandbox-allowlist/"
-  cp -f "$root/test/driver.js" "$profiles/$prof/sandbox-allowlist/"
+  mkdir -p "$profiles/$prof/better-sandbox"
+  printf '{"type":"module"}\n' > "$profiles/$prof/better-sandbox/package.json"
+  cp -f "$src"/*.js "$profiles/$prof/better-sandbox/"
+  cp -f "$root/test/driver.js" "$profiles/$prof/better-sandbox/"
 done
 
 # basetest: the same driver against the harness' built-in providers — no plugin entries.
 cat > "$profiles/basetest/cordis.patch.yml" <<PATCH
 - insert:
-    - id: sandbox-allowlist-driver
-      name: ./sandbox-allowlist/driver.js
+    - id: better-sandbox-driver
+      name: ./better-sandbox/driver.js
 PATCH
 
 mkdir -p "$DSH_HOME/allowed" "$DSH_HOME/denied" "$DSH_HOME/run"
@@ -253,12 +253,12 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
   name: '@deepseek-ai/dsh-subprocess-local'
   disabled: true
 - insert:
-    - id: subprocess-guard
-      name: ./sandbox-allowlist/subprocess.js
-    - id: sandbox-guard-api
-      name: ./sandbox-allowlist/guard-api.js
-    - id: sandbox-allowlist
-      name: ./sandbox-allowlist/allowlist.js
+    - id: better-sandbox-subprocess
+      name: ./better-sandbox/subprocess.js
+    - id: better-sandbox-guard
+      name: ./better-sandbox/guard-api.js
+    - id: better-sandbox
+      name: ./better-sandbox/rules.js
       config:
         writableDirs:
           - ./relative-must-be-skipped
@@ -273,12 +273,12 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
         readDenyFiles:
           - $DSH_HOME/secretfile.txt
           - $DSH_HOME/run/../nonexistent-secret
-    - id: fs-allowlist
-      name: ./sandbox-allowlist/fs.js
-    - id: sandbox-allowlist-runner
-      name: ./sandbox-allowlist/runner.js
-    - id: sandbox-allowlist-driver
-      name: ./sandbox-allowlist/driver.js
+    - id: better-sandbox-fs
+      name: ./better-sandbox/fs.js
+    - id: better-sandbox-runner
+      name: ./better-sandbox/runner.js
+    - id: better-sandbox-driver
+      name: ./better-sandbox/driver.js
 PATCH
 
 run_profile() {

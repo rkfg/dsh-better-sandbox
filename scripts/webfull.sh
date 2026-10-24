@@ -17,16 +17,16 @@ port=${DSH_TEST_PORT:-3181}
 rm -rf "$prof"
 mkdir -p "$prof" "$DSH_HOME/logs"
 echo '[]' > "$prof/cordis.yml"
-cp -r "$root/packages/@rkfg/dsh-sandbox-allowlist/lib" "$prof/sandbox-allowlist"
-printf '{"type":"module"}\n' > "$prof/sandbox-allowlist/package.json"
+cp -r "$root/packages/@rkfg/dsh-better-sandbox/lib" "$prof/better-sandbox"
+printf '{"type":"module"}\n' > "$prof/better-sandbox/package.json"
 
 if [[ -n ${DSH_UI:-} ]]; then
   mkdir -p "$prof/node_modules/@rkfg"
-  cp -r "$root/packages/@rkfg/dsh-sandbox-allowlist-ui" "$prof/node_modules/@rkfg/dsh-sandbox-allowlist-ui"
+  cp -r "$root/packages/@rkfg/dsh-better-sandbox-ui" "$prof/node_modules/@rkfg/dsh-better-sandbox-ui"
 fi
 if [[ -n ${DSH_BUNDLE:-} ]]; then
   mkdir -p "$prof/node_modules/@rkfg"
-  cp -r "$root/packages/@rkfg/dsh-sandbox-allowlist" "$prof/node_modules/@rkfg/dsh-sandbox-allowlist"
+  cp -r "$root/packages/@rkfg/dsh-better-sandbox" "$prof/node_modules/@rkfg/dsh-better-sandbox"
 fi
 
 node - "$prof" "$root" <<'NODE'
@@ -47,8 +47,8 @@ const pkg = {
       bundles: [
         '@deepseek-ai/dsh-base',
         '@deepseek-ai/dsh-web-app',
-        ...(bundle ? ['@rkfg/dsh-sandbox-allowlist'] : []),
-        ...(process.env.DSH_UI ? ['@rkfg/dsh-sandbox-allowlist-ui'] : []),
+        ...(bundle ? ['@rkfg/dsh-better-sandbox'] : []),
+        ...(process.env.DSH_UI ? ['@rkfg/dsh-better-sandbox-ui'] : []),
       ],
     },
   },
@@ -67,8 +67,8 @@ const rows = bundle
   ? [
       '# the entries and the disabling of the built-in providers live in the bundle patch layer,',
       '# only the list values are here (this is how the Settings page writes them).',
-      '- id: sandbox-allowlist',
-      "  name: '@rkfg/dsh-sandbox-allowlist/allowlist'",
+      '- id: better-sandbox',
+      "  name: '@rkfg/dsh-better-sandbox/rules'",
       ...lists('  '),
     ]
   : [
@@ -82,22 +82,22 @@ const rows = bundle
       "  name: '@deepseek-ai/dsh-subprocess-local'",
       '  disabled: true',
       '- insert:',
-      '    - id: sandbox-allowlist',
-      '      name: ./sandbox-allowlist/allowlist.js',
+      '    - id: better-sandbox',
+      '      name: ./better-sandbox/rules.js',
       ...lists('      '),
-      '    - id: fs-allowlist',
-      '      name: ./sandbox-allowlist/fs.js',
-      '    - id: sandbox-allowlist-runner',
-      '      name: ./sandbox-allowlist/runner.js',
-      '    - id: subprocess-guard',
-      '      name: ./sandbox-allowlist/subprocess.js',
+      '    - id: better-sandbox-fs',
+      '      name: ./better-sandbox/fs.js',
+      '    - id: better-sandbox-runner',
+      '      name: ./better-sandbox/runner.js',
+      '    - id: better-sandbox-subprocess',
+      '      name: ./better-sandbox/subprocess.js',
     ]
 
 const probes = { driver: 'driver', 'settings-write': 'settings-write-probe', 'revision': 'revision-probe', loader: 'loader-probe' }
 if (probes[probe] !== void 0) {
   const file = `${probes[probe]}.js`
-  fs.copyFileSync(path.join(root, 'test', file), path.join(prof, 'sandbox-allowlist', file))
-  rows.push('- insert:', `    - id: ${probes[probe]}`, `      name: ./sandbox-allowlist/${file}`)
+  fs.copyFileSync(path.join(root, 'test', file), path.join(prof, 'better-sandbox', file))
+  rows.push('- insert:', `    - id: ${probes[probe]}`, `      name: ./better-sandbox/${file}`)
 }
 fs.writeFileSync(path.join(prof, 'cordis.patch.yml'), `${rows.join('\n')}\n`)
 NODE

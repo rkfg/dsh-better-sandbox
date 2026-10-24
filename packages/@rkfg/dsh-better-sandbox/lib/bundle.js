@@ -1,16 +1,16 @@
 /**
- * dsh-sandbox-allowlist/bundle: the bundle's entry group.
+ * dsh-better-sandbox/bundle: the bundle's entry group.
  *
  * The group keeps all four plugin rows in one subtree: it can be switched off as a
  * whole, and only such entries land on the configurable list (the settings page in
  * the web UI is built from entries in include subtrees).
  *
- * @module dsh-sandbox-allowlist/bundle
+ * @module dsh-better-sandbox/bundle
  */
 const groupKey = Symbol.for('cordis.group')
 const init = Symbol.for('cordis.init')
 
-export default class SandboxAllowlistBundle {
+export default class BetterSandboxBundle {
   static inject = ['loader']
   static [groupKey] = true
 
@@ -22,7 +22,7 @@ export default class SandboxAllowlistBundle {
 
   async *[init]() {
     const Group = this.ctx.loader?.builtins?.group
-    if (typeof Group !== 'function') throw new Error('dsh-sandbox-allowlist/bundle needs the built-in cordis:group entry')
+    if (typeof Group !== 'function') throw new Error('dsh-better-sandbox/bundle needs the built-in cordis:group entry')
     const group = new Group(this.ctx, this.config)
     yield () => group.stop()
     await group.update(this.config)

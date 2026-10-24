@@ -1,14 +1,14 @@
 /*
- * @rkfg/dsh-sandbox-allowlist-ui / the sandbox settings section (client half).
+ * @rkfg/dsh-better-sandbox-ui / the sandbox settings section (client half).
  *
  * Reads and writes the rules through the harness's regular settings layer
  * (ctx.remote.settings): the list of rules becomes a volatile string field of the
- * sandbox-allowlist entry, so an edit applies without remounting the entries.
+ * better-sandbox entry, so an edit applies without remounting the entries.
  *
  * Format — a hand-written __ModuleLoader__ bundle, no JSX is used.
  */
 window.__ModuleLoader__.load({
-	id: "@rkfg/dsh-sandbox-allowlist-ui",
+	id: "@rkfg/dsh-better-sandbox-ui",
 	factory: (require) => {
 		var module = { exports: {} }
 		var exports = module.exports
@@ -19,7 +19,7 @@ window.__ModuleLoader__.load({
 		const useEffect = react.useEffect
 		const useCallback = react.useCallback
 
-		const NS = "sandbox-allowlist"
+		const NS = "better-sandbox"
 		const FIELDS = [
 			{ key: "writableDirs", hintKey: "hintWritableDirs", kind: "path" },
 			{ key: "readDenyDirs", hintKey: "hintReadDenyDirs", kind: "path" },
@@ -230,7 +230,7 @@ window.__ModuleLoader__.load({
 					nav: "Sandbox",
 					intro: "Write grants outside the workspace and read-protected paths. Changes apply without a restart.",
 					loading: "loading rules…",
-					missing: "sandbox-allowlist entry not found — the sandbox plugin is not mounted.",
+					missing: "better-sandbox entry not found — the sandbox plugin is not mounted.",
 					revision: "revision",
 					unchanged: "no changes",
 					failed: "write failed",
@@ -255,7 +255,7 @@ window.__ModuleLoader__.load({
 					nav: "沙盒",
 					intro: "工作区之外的写入授权与禁止读取的路径。修改即时生效，无需重启。",
 					loading: "正在加载规则…",
-					missing: "未找到 sandbox-allowlist 配置项 — 沙盒插件未挂载。",
+					missing: "未找到 better-sandbox 配置项 — 沙盒插件未挂载。",
 					revision: "修订版本",
 					unchanged: "没有变化",
 					failed: "保存失败",
@@ -321,7 +321,7 @@ window.__ModuleLoader__.load({
 				return function () {
 					if (typeof locale === "function") locale()
 				}
-			}, "sandbox-allowlist-ui: section dictionary")
+			}, "better-sandbox-ui: section dictionary")
 
 			ctx.slots.inject("settings.section", function () {
 				return ctx.slots.register(

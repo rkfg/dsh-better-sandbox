@@ -1,6 +1,6 @@
-# @rkfg/dsh-sandbox-allowlist-ui
+# @rkfg/dsh-better-sandbox-ui
 
-Settings section **Sandbox** for the sandbox-allowlist plugin: four text areas (one path per line) for write grants, read-protected directories, read-protected files and protected path names. Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules without a restart. Russian copy: [README.ru.md](README.ru.md).
+Settings section **Sandbox** for the better-sandbox plugin: four text areas (one path per line) for write grants, read-protected directories, read-protected files and protected path names. Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules without a restart. Russian copy: [README.ru.md](README.ru.md).
 
 ## Why a separate package
 
@@ -21,7 +21,7 @@ The client declares the services it needs by name: `slots`, `locale`, `connectio
 
 ## Why the form does not use its own Remote namespace
 
-Per `cookbook/adding-a-remote-api.md`, a client consuming a plugin namespace must inject `remote.<namespace>`, and that namespace exists only because the build pipeline generates the `./typert` and `./remote` artifacts. A hand-written JavaScript package has no such artifacts, so the form reads `ctx.remote.settings.describe()` (no arguments) and writes `ctx.remote.settings.update('sandbox-allowlist', patch, revision)` — the same path the built-in settings dialog uses. The host-side `sandboxGuard` service remains available to tools and tests.
+Per `cookbook/adding-a-remote-api.md`, a client consuming a plugin namespace must inject `remote.<namespace>`, and that namespace exists only because the build pipeline generates the `./typert` and `./remote` artifacts. A hand-written JavaScript package has no such artifacts, so the form reads `ctx.remote.settings.describe()` (no arguments) and writes `ctx.remote.settings.update('better-sandbox', patch, revision)` — the same path the built-in settings dialog uses. The host-side `sandboxGuard` service remains available to tools and tests.
 
 ## Validation
 
@@ -57,7 +57,7 @@ itself is covered by `test/revision-probe.js` (`DSH_PROBE=revision`).
 
 ### Influence on the model context
 
-Indirectly, through `@rkfg/dsh-sandbox-allowlist`: the lists saved here decide which announcement lines reach the runtime context and which paths produce read refusals.
+Indirectly, through `@rkfg/dsh-better-sandbox`: the lists saved here decide which announcement lines reach the runtime context and which paths produce read refusals.
 
 #### Token effect
 
@@ -65,7 +65,7 @@ Zero-direct: the section itself adds nothing to the model context.
 
 #### KV Cache effect
 
-Independent: prefix reuse is affected only by the announcement block owned by `@rkfg/dsh-sandbox-allowlist`.
+Independent: prefix reuse is affected only by the announcement block owned by `@rkfg/dsh-better-sandbox`.
 
 ## Known Limitations and Deferred Work
 

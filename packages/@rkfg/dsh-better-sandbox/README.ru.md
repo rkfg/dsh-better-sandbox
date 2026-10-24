@@ -1,4 +1,4 @@
-# @rkfg/dsh-sandbox-allowlist
+# @rkfg/dsh-better-sandbox
 
 Бандл DSH: расширяет песочницу дополнительными корнями записи, запрещает изменять
 `.git` и закрывает от чтения каталоги и файлы с секретами. Работает в трёх
@@ -9,7 +9,7 @@
 
 | Модуль | Роль |
 |---|---|
-| `lib/allowlist.js` | сервис `sandboxAllowlist`: эффективные списки правил, отбраковка неприменимых (`rejected`), маска mode 000 |
+| `lib/rules.js` | сервис `betterSandbox`: эффективные списки правил, отбраковка неприменимых (`rejected`), маска mode 000 |
 | `lib/fs.js` | провайдер `fs`: забор на запись + запрет чтения |
 | `lib/runner.js` | провайдер `sandbox`: аргументы bwrap для команд |
 | `lib/subprocess.js` | провайдер `subprocess`: оборачивает в bwrap только ripgrep (иначе `grep`/`glob` читают закрытое) |
@@ -25,15 +25,15 @@
 
 Правила правятся в веб-UI: диалог настроек → раздел **Sandbox** (четыре поля, по
 строке на путь) → «Save». Раздел приносит отдельный бандл
-`@rkfg/dsh-sandbox-allowlist-ui`: пакет с клиентской половиной обязан иметь ровно одну
-запись загрузчика, поэтому он не может жить внутри `@rkfg/dsh-sandbox-allowlist`.
+`@rkfg/dsh-better-sandbox-ui`: пакет с клиентской половиной обязан иметь ровно одну
+запись загрузчика, поэтому он не может жить внутри `@rkfg/dsh-better-sandbox`.
 Подписи раздела существуют в `en` и `zh`; по-русски они появятся вместе с
 русской локализацией самого харнесса.
 
 Клиентский рукав регистрирует слот `settings.section` и работает через штатный
 слой настроек: `ctx.remote.settings.describe()` (без аргументов, ответ —
 `{ namespaces: [{ ns, value, revision, schema }] }`) и
-`ctx.remote.settings.update('sandbox-allowlist', patch, revision)`. Хостовая
+`ctx.remote.settings.update('better-sandbox', patch, revision)`. Хостовая
 запись пакета — пустой сервис: вся логика в клиенте и в слое настроек.
 
 Собственного `ctx.remote`-пространства имён у клиента сознательно нет: согласно
@@ -65,8 +65,8 @@
 В профильном `cordis.patch.yml` остаются только значения:
 
 ```yaml
-- id: sandbox-allowlist
-  name: '@rkfg/dsh-sandbox-allowlist/allowlist'
+- id: better-sandbox
+  name: '@rkfg/dsh-better-sandbox/rules'
   config:
     writableDirs: ["/opt/go", "/home/you/.cache"]
     readDenyDirs: ["/home/you/.ssh", "/home/you/.aws"]
@@ -85,10 +85,10 @@
 
 Все четыре списка помечены `.volatile()`: харнесс отдаёт их как ссылки `{ get() }`
 (cosmokit), обновляет без перемонтирования записи, а значение сохраняется в
-profile patch. Единственный источник правил — config строки `sandbox-allowlist`:
+profile patch. Единственный источник правил — config строки `better-sandbox`:
 списки приходят из слоя настроек и лежат в profile patch.
 
-Программная правка — `settings.update('sandbox-allowlist', patch, revision)`
+Программная правка — `settings.update('better-sandbox', patch, revision)`
 (так делает страница настроек). Вызывать её нужно вне стека активации записи:
 редактор конфигурации берёт лок на `package.json` профиля, который стартовый
 проход удерживает, и вызов из `apply()` упирается в таймаут блокировки.
@@ -134,7 +134,7 @@ DSH_BUNDLE=1 DSH_PROBE=driver ./scripts/webfull.sh     # полный веб-п�
 
 #### What the model sees
 
-Секция `sandbox:allowlist` добавляется к контексту рантайма сразу после секции
+Секция `sandbox:rules` добавляется к контексту рантайма сразу после секции
 политики песочницы (`SANDBOX_POLICY`) и существует, только если хотя бы один список
 не пуст и `announceInPrompt` включён. Текст строится по трём шаблонам:
 
@@ -166,7 +166,7 @@ Append-only относительно политики песочницы: сек
 
 Косвенно, через `dsh-tool-fs` и `dsh-tool-bash`: отказ fence'а и refusal-сигнатура
 раннера попадают в результат инструмента. Пакет поставляет текст причины отказа
-чтения (`"<путь>" is protected from reading by the sandbox-allowlist policy`) и
+чтения (`"<путь>" is protected from reading by the better-sandbox policy`) и
 дополняет диалект bwrap сигнатурой `permission denied`, чтобы bash показал
 политический отказ с подсказкой об эскалации, а не системную ошибку.
 

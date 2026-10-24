@@ -1,4 +1,0 @@
-# @rkfg/dsh-sandbox-allowlist-ui: the sandbox-rules section of the web Settings page.
-- insert:
-    - id: sandbox-allowlist-ui
-      name: '@rkfg/dsh-sandbox-allowlist-ui'

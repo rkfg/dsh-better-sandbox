@@ -1,5 +1,5 @@
 /**
- * sandbox-allowlist / bwrap arguments.
+ * better-sandbox / bwrap arguments.
  *
  * Single source of truth for what the plugin adds to the bwrap profile: write grants
  * outside the cwd, the read-only return for protected paths, and the masks for the
@@ -13,7 +13,7 @@
  * plus a tmpfs on `/tmp` in workspace-write) — if the harness changes the format,
  * the edit has to be brought here too.
  *
- * @module dsh-sandbox-allowlist/masks
+ * @module dsh-better-sandbox/masks
  */
 import { existsSync } from 'node:fs'
 
@@ -25,7 +25,7 @@ export const bwrapBaseArgs = (mode) => {
 
 /**
  * The plugin's arguments for one confinement.
- * @param allow - the sandboxAllowlist service.
+ * @param allow - the betterSandbox service.
  * @param policy - the policy allowed for this run.
  * @param confined - roots that must not be covered by a mask (the session cwd and the grants).
  * @param warn - warning callback (the caller emits one call per reason).
@@ -37,7 +37,7 @@ export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards) 
   if (applyWriteGuards) {
     for (const root of allow.roots) {
       if (!existsSync(root)) {
-        warn(`missing-${root}`, `sandbox-allowlist: root ${JSON.stringify(root)} does not exist, grant skipped`)
+        warn(`missing-${root}`, `better-sandbox: root ${JSON.stringify(root)} does not exist, grant skipped`)
         continue
       }
       args.push('--bind', root, root)
@@ -52,17 +52,17 @@ export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards) 
   for (const dir of allow.readDirs) {
     if (!existsSync(dir)) continue
     if (confined.some((root) => dir === root || root.startsWith(`${dir}/`))) {
-      warn(`swallow-${dir}`, `sandbox-allowlist: a read mask on ${JSON.stringify(dir)} would cover the working directory — skipped`)
+      warn(`swallow-${dir}`, `better-sandbox: a read mask on ${JSON.stringify(dir)} would cover the working directory — skipped`)
       continue
     }
     if (allow.maskUsable()) args.push('--ro-bind', allow.mask.dir, dir)
     else if (allow.config.maskFallback !== 'skip') args.push('--tmpfs', dir)
-    else warn(`nomask-${dir}`, `sandbox-allowlist: read mask for ${JSON.stringify(dir)} not applied (no stub)`)
+    else warn(`nomask-${dir}`, `better-sandbox: read mask for ${JSON.stringify(dir)} not applied (no stub)`)
   }
   for (const file of allow.readFiles) {
     if (!existsSync(file)) continue
     if (allow.maskUsable()) args.push('--ro-bind', allow.mask.file, file)
-    else warn(`maskfile-${file}`, `sandbox-allowlist: read mask for file ${JSON.stringify(file)} not applied (no stub)`)
+    else warn(`maskfile-${file}`, `better-sandbox: read mask for file ${JSON.stringify(file)} not applied (no stub)`)
   }
   return args
 }

@@ -1,5 +1,5 @@
 /**
- * sandbox-allowlist / policy service.
+ * better-sandbox / policy service.
  *
  * Owns one harness file policy, extended in three directions:
  *   writableDirs   — extra roots for WRITING outside the session cwd;
@@ -11,7 +11,7 @@
  * the tools and for every consumer of ctx.fs) and the mask in `runner.js` (a bind of
  * a mode-000 empty directory inside the sandbox, which gives any process EACCES).
  *
- * @module dsh-sandbox-allowlist/allowlist
+ * @module dsh-better-sandbox/rules
  */
 import { Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -48,7 +48,7 @@ const selfPaths = () => {
   return out.map(canonical).filter((path) => isAbsolute(path))
 }
 
-export default class SandboxAllowlist extends Service {
+export default class BetterSandbox extends Service {
   // needed to check paths (the session boundary) when rules are edited from the UI
   static inject = ['sandboxPolicy']
 
@@ -98,7 +98,7 @@ export default class SandboxAllowlist extends Service {
   loggedSummary = null
 
   constructor(ctx, config) {
-    super(ctx, 'sandboxAllowlist')
+    super(ctx, 'betterSandbox')
     this.config = config
     this.selfPaths = selfPaths()
     this.prepareMask()
@@ -108,13 +108,13 @@ export default class SandboxAllowlist extends Service {
     // delivery order), while the subscription removes redundant recomputation per access.
     ctx.effect(() => ctx.on('loader/volatile-update', () => {
       this.listsKey = null
-    }), 'sandbox-allowlist: memo reset on volatile-update')
+    }), 'better-sandbox: memo reset on volatile-update')
     this.syncLists()
 
     if (config.announceInPrompt) {
       ctx.inject(['systemPrompt'], (scope) => {
         scope.systemPrompt.context({
-          name: 'sandbox:allowlist',
+          name: 'sandbox:rules',
           order: scope.systemPrompt.getContextOrder('SANDBOX_POLICY') + 1,
           text: () => {
             const lines = []
@@ -154,7 +154,7 @@ export default class SandboxAllowlist extends Service {
       try {
         rmSync(join(pluginDir, '.mask'), { recursive: true, force: true })
       } catch {}
-    }, 'sandbox-allowlist mask')
+    }, 'better-sandbox mask')
   }
 
   /**
@@ -175,7 +175,7 @@ export default class SandboxAllowlist extends Service {
       roots: this.collectDirs(this.liveList(config.writableDirs), this.selfPaths, 'writableDirs', rejected),
       denySegments: this.liveList(config.denySegments).filter((segment) => {
         if (typeof segment === 'string' && segment !== '' && !segment.includes('/') && segment !== '.' && segment !== '..' && !segment.startsWith('~')) return true
-        this.ctx.logger.warn(`sandbox-allowlist: denySegments: a single path name is required, skipped ${JSON.stringify(segment)}`)
+        this.ctx.logger.warn(`better-sandbox: denySegments: a single path name is required, skipped ${JSON.stringify(segment)}`)
         rejected.push({ field: 'denySegments', entry: segment, reason: 'segment' })
         return false
       }),
@@ -189,7 +189,7 @@ export default class SandboxAllowlist extends Service {
     const summary = JSON.stringify([lists.roots, lists.denySegments, lists.readDirs, lists.readFiles])
     if (summary !== this.loggedSummary) {
       this.loggedSummary = summary
-      this.ctx.logger.info(`sandbox-allowlist: rules: write roots ${JSON.stringify(lists.roots)}, protected names ${JSON.stringify(lists.denySegments)}, closed for reading ${JSON.stringify([...lists.readDirs, ...lists.readFiles])}, mask ${this.mask.available ? 'mode 000' : `fallback ${config.maskFallback}`}`)
+      this.ctx.logger.info(`better-sandbox: rules: write roots ${JSON.stringify(lists.roots)}, protected names ${JSON.stringify(lists.denySegments)}, closed for reading ${JSON.stringify([...lists.readDirs, ...lists.readFiles])}, mask ${this.mask.available ? 'mode 000' : `fallback ${config.maskFallback}`}`)
     }
   }
 
@@ -240,7 +240,7 @@ export default class SandboxAllowlist extends Service {
       if (typeof raw !== 'string' || raw.trim() === '') continue
       const entry = expandHome(raw.trim())
       if (!isAbsolute(entry)) {
-        this.ctx.logger.warn(`sandbox-allowlist: ${field}: an absolute path or ~/… is required, skipped ${JSON.stringify(raw)}`)
+        this.ctx.logger.warn(`better-sandbox: ${field}: an absolute path or ~/… is required, skipped ${JSON.stringify(raw)}`)
         sink?.push({ field, entry: raw, reason: 'relative' })
         continue
       }
@@ -248,7 +248,7 @@ export default class SandboxAllowlist extends Service {
       // Guarding a root the harness reads its own code and state from does not break the
       // agent, it breaks the harness itself.
       if (self.some((own) => path === own || (own.length > path.length && own.startsWith(`${path}/`)))) {
-        this.ctx.logger.warn(`sandbox-allowlist: ${field} ${JSON.stringify(path)} covers a path of the harness itself — skipped`)
+        this.ctx.logger.warn(`better-sandbox: ${field} ${JSON.stringify(path)} covers a path of the harness itself — skipped`)
         sink?.push({ field, entry: raw, reason: 'covers-harness' })
         continue
       }
@@ -264,7 +264,7 @@ export default class SandboxAllowlist extends Service {
       if (typeof raw !== 'string' || raw.trim() === '') continue
       const entry = expandHome(raw.trim())
       if (!isAbsolute(entry)) {
-        this.ctx.logger.warn(`sandbox-allowlist: ${field}: an absolute path or ~/… is required, skipped ${JSON.stringify(raw)}`)
+        this.ctx.logger.warn(`better-sandbox: ${field}: an absolute path or ~/… is required, skipped ${JSON.stringify(raw)}`)
         sink?.push({ field, entry: raw, reason: 'relative' })
         continue
       }
@@ -309,7 +309,7 @@ export default class SandboxAllowlist extends Service {
       chmodSync(file, 0o000)
       this.mask = { available: true, dir, file }
     } catch (error) {
-      this.ctx.logger.warn(`sandbox-allowlist: the mode-000 mask was not created (${String(error)}), fallback: ${this.config.maskFallback}`)
+      this.ctx.logger.warn(`better-sandbox: the mode-000 mask was not created (${String(error)}), fallback: ${this.config.maskFallback}`)
       this.mask = { available: false, dir, file: existsSync(file) ? file : void 0 }
     }
   }

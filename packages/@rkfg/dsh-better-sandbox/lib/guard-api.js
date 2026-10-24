@@ -1,7 +1,7 @@
 /**
- * sandbox-allowlist / Remote service `sandboxGuard`: a snapshot of the rules and a
+ * better-sandbox / Remote service `sandboxGuard`: a snapshot of the rules and a
  * path check for tools and tests. It does not edit the lists: the editable fields of
- * the sandbox-allowlist row are marked volatile, so editing goes through the harness
+ * the better-sandbox row are marked volatile, so editing goes through the harness
  * settings layer (the "Sandbox" page) and is applied without remounting the entries.
  *
  * The `Remote` decorator is applied by hand (the same protocol the harness's compiled
@@ -9,7 +9,7 @@
  * sees the methods as usual. Private methods are impossible in this service — calls
  * go through the cordis proxy.
  *
- * @module dsh-sandbox-allowlist/guard-api
+ * @module dsh-better-sandbox/guard-api
  */
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 
@@ -18,15 +18,15 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 const KINDS = new Set(['writableDir', 'denySegment', 'readDir', 'readFile'])
 
 export default class SandboxGuardApi extends TypertRemoteService {
-  static inject = ['sandboxAllowlist']
+  static inject = ['betterSandbox']
 
   constructor(ctx) {
     super(ctx, 'sandboxGuard')
-    ctx.logger.info('sandbox-allowlist: remote API sandboxGuard published')
+    ctx.logger.info('better-sandbox: remote API sandboxGuard published')
   }
 
   get allow() {
-    return this.ctx.sandboxAllowlist
+    return this.ctx.betterSandbox
   }
 
   state() {
@@ -45,7 +45,7 @@ export default class SandboxGuardApi extends TypertRemoteService {
    * @returns the check result: `ok`, the canonical path and whether it exists.
    */
   validate(kind, path) {
-    if (!KINDS.has(kind)) throw new RemoteError('sandbox-allowlist/invalid-kind', `sandbox-allowlist: unknown rule kind ${JSON.stringify(kind)}`, { kind, kinds: [...KINDS] })
+    if (!KINDS.has(kind)) throw new RemoteError('better-sandbox/invalid-kind', `better-sandbox: unknown rule kind ${JSON.stringify(kind)}`, { kind, kinds: [...KINDS] })
     return this.allow.validatePath(kind, path)
   }
 
@@ -57,7 +57,7 @@ const markRemoteMethods = (prototype, names) => {
   const probe = Object.create(prototype)
   for (const name of names) {
     const method = prototype[name]
-    if (typeof method !== 'function') throw new Error(`sandbox-allowlist: no method ${name} for Remote`)
+    if (typeof method !== 'function') throw new Error(`better-sandbox: no method ${name} for Remote`)
     Remote(name)(method, {
       kind: 'method',
       name,

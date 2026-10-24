@@ -1,4 +1,4 @@
-# @rkfg/dsh-sandbox-allowlist
+# @rkfg/dsh-better-sandbox
 
 Extra sandbox rules for [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh): writable directories outside the workspace, path names that must stay unwritable, and paths hidden from reading. Rules are live — the Settings page edits them and the running session picks them up without a restart.
 
@@ -28,19 +28,19 @@ Protected reads fail closed: the mask is a real mount point with mode `000`, and
 
 ## Install
 
-The unscoped name `dsh-sandbox-allowlist` on npm belongs to a different project (see [Related work](#related-work)), so these packages are published under the `@rkfg` scope.
+Both packages are published under the `@rkfg` scope: this is a personal extension of the harness, not a package of the `@deepseek-ai/*` family, and the scope keeps that difference visible.
 
 From npm (installs both packages into the profile):
 
 ```bash
-dsh plugin --profile web add @rkfg/dsh-sandbox-allowlist @rkfg/dsh-sandbox-allowlist-ui
+dsh plugin --profile web add @rkfg/dsh-better-sandbox @rkfg/dsh-better-sandbox-ui
 ```
 
 From GitHub. This is a workspace of two packages, so the git URL must point at one of them — installing the repository root would install the private workspace package and no plugin:
 
 ```bash
-dsh plugin --profile web add "git+https://github.com/rkfg/dsh-sandbox-allowlist.git#path:/packages/@rkfg/dsh-sandbox-allowlist"
-dsh plugin --profile web add "git+https://github.com/rkfg/dsh-sandbox-allowlist.git#path:/packages/@rkfg/dsh-sandbox-allowlist-ui"
+dsh plugin --profile web add "git+https://github.com/rkfg/dsh-better-sandbox.git#path:/packages/@rkfg/dsh-better-sandbox"
+dsh plugin --profile web add "git+https://github.com/rkfg/dsh-better-sandbox.git#path:/packages/@rkfg/dsh-better-sandbox-ui"
 ```
 
 From a working tree, with the mask stubs and a profile `package.json` backup handled for you:
@@ -52,8 +52,8 @@ From a working tree, with the mask stubs and a profile `package.json` backup han
 Then put the rule values in `~/.dsh/profiles/web/cordis.patch.yml`. The bundle layer of the package already declares the entries and disables the built-in providers it replaces, so the profile only carries values:
 
 ```yaml
-- id: sandbox-allowlist
-  name: '@rkfg/dsh-sandbox-allowlist/allowlist'
+- id: better-sandbox
+  name: '@rkfg/dsh-better-sandbox/rules'
   config:
     writableDirs:
       - /opt/go
@@ -72,7 +72,7 @@ Restart the profile. Adding entries and changing module code always needs a rest
 
 ## Settings page
 
-With `@rkfg/dsh-sandbox-allowlist-ui` installed, the Settings dialog gains a **Sandbox** section: four text areas (one path per line) for writable roots, read-protected directories, read-protected files and protected path names. Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules immediately — remove a directory and it becomes readable in the next tool call, add it back and the next call is refused. The section is translated into English and Chinese, the two languages the harness UI supports.
+With `@rkfg/dsh-better-sandbox-ui` installed, the Settings dialog gains a **Sandbox** section: four text areas (one path per line) for writable roots, read-protected directories, read-protected files and protected path names. Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules immediately — remove a directory and it becomes readable in the next tool call, add it back and the next call is refused. The section is translated into English and Chinese, the two languages the harness UI supports.
 
 ## Configuration
 
@@ -111,13 +111,13 @@ Read them before trusting the setup — the plugin narrows what an agent can rea
 
 ## Related work
 
-[dsh-sandbox-allowlist](https://www.npmjs.com/package/dsh-sandbox-allowlist) by `developerdh` (MIT) addresses an overlapping problem with a different trade-off, and it came first. Its scope is wider in three places: command rules (`allow` / `ask` / `deny` by pattern, with per-segment handling of compound commands), wildcard directory patterns, and a Windows ACL backend. This package is narrower and deeper: read denials are enforced **inside** confined processes (mode-000 bwrap masks plus the ripgrep fence), protected path names are enforced at any depth in the filesystem layer, and the Linux/bwrap path is what runs on a real machine every day rather than an untested backend. Their README documents that read rules constrain file tools and not shell commands; here the same rules reach the shell. Pick by which half you need — command policy and Windows, or enforced denials under bwrap.
+[dsh-better-sandbox](https://www.npmjs.com/package/dsh-better-sandbox) by `developerdh` (MIT) addresses an overlapping problem with a different trade-off, and it came first. Its scope is wider in three places: command rules (`allow` / `ask` / `deny` by pattern, with per-segment handling of compound commands), wildcard directory patterns, and a Windows ACL backend. This package is narrower and deeper: read denials are enforced **inside** confined processes (mode-000 bwrap masks plus the ripgrep fence), protected path names are enforced at any depth in the filesystem layer, and the Linux/bwrap path is what runs on a real machine every day rather than an untested backend. Their README documents that read rules constrain file tools and not shell commands; here the same rules reach the shell. Pick by which half you need — command policy and Windows, or enforced denials under bwrap.
 
 ## Repository
 
 ```
-packages/@rkfg/dsh-sandbox-allowlist/       host bundle: services, providers, Remote service
-packages/@rkfg/dsh-sandbox-allowlist-ui/    Settings page (separate package: a client package must own exactly one Loader entry)
+packages/@rkfg/dsh-better-sandbox/       host bundle: services, providers, Remote service
+packages/@rkfg/dsh-better-sandbox-ui/    Settings page (separate package: a client package must own exactly one Loader entry)
 scripts/install.sh                    install into a profile, recreate mask stubs
 scripts/check.sh                      headless contour with generated fixtures
 scripts/webfull.sh                    web contour, probes, `serve` for browser debugging

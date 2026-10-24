@@ -1,12 +1,12 @@
 /**
- * Shared "where writing is forbidden" rules for the sandbox-allowlist plugin.
+ * Shared "where writing is forbidden" rules for the better-sandbox plugin.
  *
  * The refusal is expressed with the same FS_SANDBOX_DENIED code as the stock sandbox,
  * so the write/edit tool gets the standard `[sandbox: file access denied …]` marker
  * together with the escalation hint, and bash gets it through the runner's denial
  * signature ("read-only file system").
  *
- * @module dsh-sandbox-allowlist/policy
+ * @module dsh-better-sandbox/policy
  */
 import { existsSync, realpathSync, readdirSync, statSync } from 'node:fs'
 import { join, sep } from 'node:path'

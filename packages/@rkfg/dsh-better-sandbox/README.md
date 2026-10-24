@@ -1,4 +1,4 @@
-# @rkfg/dsh-sandbox-allowlist (host bundle)
+# @rkfg/dsh-better-sandbox (host bundle)
 
 Host half of the sandbox rules plugin: the service that owns the rule lists, the three provider subclasses that enforce them, and a small Remote service that reports the effective state. Russian copy: [README.ru.md](README.ru.md).
 
@@ -8,12 +8,12 @@ The bundle layer (`cordis.patch.yml`) disables the built-in providers it replace
 
 | Entry | Module | Role |
 |---|---|---|
-| `sandbox-allowlist` | `lib/allowlist.js` | owns the rule lists, the mask stubs, the prompt announcement, the Remote state |
-| `fs-allowlist` | `lib/fs.js` | replaces the `fs` provider: read fence and protected-name checks |
-| `sandbox-allowlist-runner` | `lib/runner.js` | replaces `sandbox-local`: extra bwrap binds, widened denial dialect for masked reads |
-| `subprocess-guard` | `lib/subprocess.js` | replaces `subprocess-local`: the same binds for ripgrep spawns |
-| `sandbox-guard-api` | `lib/guard-api.js` | Remote `sandboxGuard`: `state()`, `validate()` |
-| `sandbox-allowlist-bundle` | `lib/bundle.js` | the group that carries the children above |
+| `better-sandbox` | `lib/rules.js` | owns the rule lists, the mask stubs, the prompt announcement, the Remote state |
+| `better-sandbox-fs` | `lib/fs.js` | replaces the `fs` provider: read fence and protected-name checks |
+| `better-sandbox-runner` | `lib/runner.js` | replaces `sandbox-local`: extra bwrap binds, widened denial dialect for masked reads |
+| `better-sandbox-subprocess` | `lib/subprocess.js` | replaces `subprocess-local`: the same binds for ripgrep spawns |
+| `better-sandbox-guard` | `lib/guard-api.js` | Remote `sandboxGuard`: `state()`, `validate()` |
+| `better-sandbox-bundle` | `lib/bundle.js` | the group that carries the children above |
 
 Paths may be written with `~` or `~/…`: they are expanded against `os.homedir()`
 before anything else, so `~/.cache` and `/home/you/.cache` are the same rule. The
@@ -24,8 +24,8 @@ are marked `missing` — visible through `sandboxGuard.state()`.
 Profile configuration stays to values only:
 
 ```yaml
-- id: sandbox-allowlist
-  name: '@rkfg/dsh-sandbox-allowlist/allowlist'
+- id: better-sandbox
+  name: '@rkfg/dsh-better-sandbox/rules'
   config:
     writableDirs: [...]
     denySegments: [...]
@@ -46,7 +46,7 @@ Profile configuration stays to values only:
 
 #### What the model sees
 
-A `sandbox:allowlist` block is appended to the runtime context right after the sandbox policy section. It exists only when at least one list is non-empty and `announceInPrompt` is on. Three templates:
+A `sandbox:rules` block is appended to the runtime context right after the sandbox policy section. It exists only when at least one list is non-empty and `announceInPrompt` is on. Three templates:
 
 ##### Verbatim text for this field
 

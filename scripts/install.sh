@@ -11,7 +11,7 @@
 # and folders of the old name, and two packages sharing one package name break the
 # page load ("duplicate factory registration").
 #
-# The regular install is `dsh plugin --profile <name> add @rkfg/dsh-sandbox-allowlist`.
+# The regular install is `dsh plugin --profile <name> add @rkfg/dsh-better-sandbox`.
 # This script is for installing from a working tree: it checks the syntax, backs up the
 # profile's package.json, and re-creates the mask stubs that bwrap takes as source paths.
 #
@@ -30,11 +30,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-src="$root/packages/@rkfg/dsh-sandbox-allowlist"
-uipkg="$root/packages/@rkfg/dsh-sandbox-allowlist-ui"
+src="$root/packages/@rkfg/dsh-better-sandbox"
+uipkg="$root/packages/@rkfg/dsh-better-sandbox-ui"
 prof="$home/profiles/$profile"
-dst="$prof/node_modules/@rkfg/dsh-sandbox-allowlist"
-uirst="$prof/node_modules/@rkfg/dsh-sandbox-allowlist-ui"
+dst="$prof/node_modules/@rkfg/dsh-better-sandbox"
+uirst="$prof/node_modules/@rkfg/dsh-better-sandbox-ui"
 [[ -d "$prof" ]] || { echo "no such profile: $prof" >&2; exit 1; }
 
 export DROP
@@ -71,7 +71,7 @@ const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
 pkg.dsh ??= {}
 pkg.dsh.profile ??= {}
 pkg.dsh.profile.bundles ??= []
-const wanted = ['@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui']
+const wanted = ['@rkfg/dsh-better-sandbox', '@rkfg/dsh-better-sandbox-ui']
 const dropped = (process.env.DROP ? process.env.DROP.split('\n').filter(Boolean) : [])
 for (const name of dropped) {
   const index = pkg.dsh.profile.bundles.indexOf(name)
@@ -94,5 +94,5 @@ NODE
 
 echo "installed: $dst"
 echo "installed: $uirst"
-echo "the profile only needs the values: - id: sandbox-allowlist / name: '@rkfg/dsh-sandbox-allowlist/allowlist' / config: { writableDirs: [...], readDenyDirs: [...], readDenyFiles: [...], denySegments: [...] }"
+echo "the profile only needs the values: - id: better-sandbox / name: '@rkfg/dsh-better-sandbox/rules' / config: { writableDirs: [...], readDenyDirs: [...], readDenyFiles: [...], denySegments: [...] }"
 echo 'a profile restart is required'

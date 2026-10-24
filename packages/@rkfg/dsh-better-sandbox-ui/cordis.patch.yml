@@ -1,0 +1,4 @@
+# @rkfg/dsh-better-sandbox-ui: the sandbox-rules section of the web Settings page.
+- insert:
+    - id: better-sandbox-ui
+      name: '@rkfg/dsh-better-sandbox-ui'

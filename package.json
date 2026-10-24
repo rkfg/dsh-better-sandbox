@@ -1,8 +1,8 @@
 {
-  "name": "dsh-sandbox-allowlist-workspace",
+  "name": "dsh-better-sandbox-workspace",
   "version": "0.1.0",
   "private": true,
-  "description": "Workspace for the DeepSeek Harness sandbox-allowlist plugin: host bundle plus its Settings page package.",
+  "description": "Workspace for the DeepSeek Harness better-sandbox plugin: host bundle plus its Settings page package.",
   "license": "MIT",
   "workspaces": [
     "packages/*"

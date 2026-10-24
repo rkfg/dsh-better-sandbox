@@ -1,6 +1,6 @@
 {
-  "name": "@rkfg/dsh-sandbox-allowlist",
-  "version": "0.1.0",
+  "name": "@rkfg/dsh-better-sandbox",
+  "version": "0.2.0",
   "type": "module",
   "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names, read-protected paths.",
   "dsh": {
@@ -9,7 +9,7 @@
     }
   },
   "exports": {
-    ".": "./lib/allowlist.js",
+    ".": "./lib/rules.js",
     "./bundle": "./lib/bundle.js",
     "./fs": "./lib/fs.js",
     "./runner": "./lib/runner.js",
@@ -19,7 +19,7 @@
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./allowlist": "./lib/allowlist.js"
+    "./rules": "./lib/rules.js"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "0.2.1-rc.2",
@@ -40,13 +40,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rkfg/dsh-sandbox-allowlist.git",
-    "directory": "packages/@rkfg/dsh-sandbox-allowlist"
+    "url": "git+https://github.com/rkfg/dsh-better-sandbox.git",
+    "directory": "packages/@rkfg/dsh-better-sandbox"
   },
   "bugs": {
-    "url": "https://github.com/rkfg/dsh-sandbox-allowlist/issues"
+    "url": "https://github.com/rkfg/dsh-better-sandbox/issues"
   },
-  "homepage": "https://github.com/rkfg/dsh-sandbox-allowlist/tree/main/packages/@rkfg/dsh-sandbox-allowlist",
+  "homepage": "https://github.com/rkfg/dsh-better-sandbox",
   "keywords": [
     "deepseek-harness",
     "dsh",

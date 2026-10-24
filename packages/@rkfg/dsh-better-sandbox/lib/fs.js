@@ -1,5 +1,5 @@
 /**
- * sandbox-allowlist / fs: an extension of the file system sandbox.
+ * better-sandbox / fs: an extension of the file system sandbox.
  *
  * Extends SandboxedFileSystem (all of the LocalFileSystem mechanics) and only changes
  * how the target of an operation is judged:
@@ -12,7 +12,7 @@
  * danger-full-access behaves as in the harness — no fence: escalation leads there, and
  * it removes the protection deliberately, on the user's approval.
  *
- * @module dsh-sandbox-allowlist/fs
+ * @module dsh-better-sandbox/fs
  */
 import SandboxedFileSystem from '@deepseek-ai/dsh-fs-sandbox'
 import { FsError } from '@deepseek-ai/dsh-fs'
@@ -26,11 +26,11 @@ const isUnder = (path, root) => {
   return path.startsWith(prefix)
 }
 
-export default class AllowlistedFileSystem extends SandboxedFileSystem {
-  static inject = ['sandboxPolicy', 'sandboxAllowlist']
+export default class BetterSandboxFileSystem extends SandboxedFileSystem {
+  static inject = ['sandboxPolicy', 'betterSandbox']
 
   get allow() {
-    return this.ctx.sandboxAllowlist
+    return this.ctx.betterSandbox
   }
 
   get readGuarded() {
@@ -46,7 +46,7 @@ export default class AllowlistedFileSystem extends SandboxedFileSystem {
       [
         sandboxDenialMarker('workspace-write'),
         escalationHintMarker('operation'),
-        `cannot ${operation} "${displayPath}": "${protectedBy}" is protected from reading by the sandbox-allowlist policy`,
+        `cannot ${operation} "${displayPath}": "${protectedBy}" is protected from reading by the better-sandbox policy`,
       ].join('\n'),
       'FS_SANDBOX_DENIED',
     )
@@ -70,7 +70,7 @@ export default class AllowlistedFileSystem extends SandboxedFileSystem {
       const denied = allow.deniedSegment(fresh.targetKey)
       if (denied !== void 0) {
         throw new FsError(
-          `cannot write "${target.displayPath}": "${denied}" is protected by the sandbox-allowlist policy`,
+          `cannot write "${target.displayPath}": "${denied}" is protected by the better-sandbox policy`,
           'FS_SANDBOX_DENIED',
         )
       }

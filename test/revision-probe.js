@@ -12,7 +12,7 @@ export function apply(ctx) {
     const out = []
     const row = function () {
       return Promise.resolve(ctx.settings.describe()).then(function (rows) {
-        return rows.find(function (entry) { return entry.ns === 'sandbox-allowlist' })
+        return rows.find(function (entry) { return entry.ns === 'better-sandbox' })
       })
     }
     row()
@@ -20,7 +20,7 @@ export function apply(ctx) {
         out.push(`document revision: ${first.revision}, fields in value: ${Object.keys(first.value ?? {}).length}`)
         // An edit made from a stale snapshot: this is what a second browser looks like, one
         // still holding the value from before the profile was changed somewhere else.
-        return ctx.settings.update('sandbox-allowlist', { denySegments: ['.git'] }, first.revision + 1000)
+        return ctx.settings.update('better-sandbox', { denySegments: ['.git'] }, first.revision + 1000)
           .then(function () {
             out.push('stale revision: ACCEPTED (a rejection was expected — someone else\'s edit would have been lost)')
           })
@@ -33,7 +33,7 @@ export function apply(ctx) {
       })
       .then(function (fresh) {
         out.push(`revision after the rejection: ${fresh.revision} (unchanged)`)
-        return ctx.settings.update('sandbox-allowlist', { denySegments: fresh.value.denySegments ?? ['.git'] }, fresh.revision)
+        return ctx.settings.update('better-sandbox', { denySegments: fresh.value.denySegments ?? ['.git'] }, fresh.revision)
           .then(function () {
             out.push('edit against the current revision: accepted')
             return row()

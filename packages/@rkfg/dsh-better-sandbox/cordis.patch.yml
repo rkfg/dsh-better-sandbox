@@ -1,4 +1,4 @@
-# @rkfg/dsh-sandbox-allowlist: a sandbox with extra roots for writing, .git protected
+# @rkfg/dsh-better-sandbox: a sandbox with extra roots for writing, .git protected
 # from modification, and secrets protected from reading.
 #
 # The list values (writableDirs, readDenyDirs, readDenyFiles) are deliberately NOT here:
@@ -14,13 +14,13 @@
   name: '@deepseek-ai/dsh-subprocess-local'
   disabled: true
 - insert:
-    - id: sandbox-allowlist
-      name: '@rkfg/dsh-sandbox-allowlist/allowlist'
-    - id: fs-allowlist
-      name: '@rkfg/dsh-sandbox-allowlist/fs'
-    - id: sandbox-allowlist-runner
-      name: '@rkfg/dsh-sandbox-allowlist/runner'
-    - id: subprocess-guard
-      name: '@rkfg/dsh-sandbox-allowlist/subprocess'
-    - id: sandbox-guard-api
-      name: '@rkfg/dsh-sandbox-allowlist/guard-api'
+    - id: better-sandbox
+      name: '@rkfg/dsh-better-sandbox/rules'
+    - id: better-sandbox-fs
+      name: '@rkfg/dsh-better-sandbox/fs'
+    - id: better-sandbox-runner
+      name: '@rkfg/dsh-better-sandbox/runner'
+    - id: better-sandbox-subprocess
+      name: '@rkfg/dsh-better-sandbox/subprocess'
+    - id: better-sandbox-guard
+      name: '@rkfg/dsh-better-sandbox/guard-api'

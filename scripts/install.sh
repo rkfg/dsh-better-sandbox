@@ -73,11 +73,22 @@ pkg.dsh.profile ??= {}
 pkg.dsh.profile.bundles ??= []
 const wanted = ['@rkfg/dsh-better-sandbox', '@rkfg/dsh-better-sandbox-ui']
 const dropped = (process.env.DROP ? process.env.DROP.split('\n').filter(Boolean) : [])
+// A dropped package folder may still hold the mode-000 mask stubs: rmSync cannot
+// descend into them, so they are made writable first (same rule as deleting the
+// folder by hand).
+const removePackage = (dir) => {
+  for (const stub of [`${dir}/lib/.mask/empty-dir`, `${dir}/lib/.mask/empty-file`]) {
+    try { fs.chmodSync(stub, 0o755) } catch {}
+  }
+  if (!fs.existsSync(dir)) return false
+  fs.rmSync(dir, { recursive: true, force: true })
+  return true
+}
 for (const name of dropped) {
   const index = pkg.dsh.profile.bundles.indexOf(name)
   if (index !== -1) pkg.dsh.profile.bundles.splice(index, 1)
-  fs.rmSync(`${path.dirname(file)}/node_modules/${name.replace('/', '/').replace('@', '@')}`, { recursive: true, force: true })
-  console.log(`removed old name: ${name}`)
+  const removed = removePackage(`${path.dirname(file)}/node_modules/${name}`)
+  console.log(`${removed ? 'removed old name' : 'old name already gone'}: ${name}`)
 }
 const missing = wanted.filter((name) => !pkg.dsh.profile.bundles.includes(name))
 if (dropped.length === 0 && missing.length === 0) {

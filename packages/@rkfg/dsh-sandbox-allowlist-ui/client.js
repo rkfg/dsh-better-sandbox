@@ -82,7 +82,9 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = useState(false)
 			const [issues, setIssues] = useState({})
 
-			const reload = useCallback(function () {
+			// keepDrafts=true обновляет только снимок профиля (и ревизию), но не
+			// трогает то, что уже набрано в полях: так работает выход из конфликта.
+			const reload = useCallback(function (keepDrafts) {
 				setBusy(true)
 				return api.read()
 					.then(function (descriptor) {
@@ -94,6 +96,10 @@ window.__ModuleLoader__.load({
 							return
 						}
 						setState(descriptor)
+						if (keepDrafts === true) {
+							setStatus(t("revision") + " " + descriptor.revision)
+							return
+						}
 						const values = {}
 						const value = descriptor.value ?? {}
 						for (const field of FIELDS) values[field.key] = lines(value[field.key])
@@ -142,11 +148,25 @@ window.__ModuleLoader__.load({
 				setBusy(true)
 				api.write(patch, state.revision)
 					.then(function (result) {
-						if (result.ok === false) throw new Error(result.message || t("failed"))
+						if (result.ok === false) {
+							const failure = new Error(result.message || t("failed"))
+							failure.code = result.code
+							throw failure
+						}
 						return reload()
 					})
 					.catch(function (failure) {
+						// SETTINGS_CONFLICT означает, что профиль поправился в другом
+						// месте после того, как форма загрузила значения. Ревизию нужно
+						// освежить, а набранное сохранить: иначе правка пользователя
+						// потеряется вместе с отказом.
+						if (failure.code === "SETTINGS_CONFLICT") {
+							setError(t("conflict"))
+							return reload(true)
+						}
 						setError(String((failure && failure.message) || failure))
+					})
+					.then(function () {
 						setBusy(false)
 					})
 			}
@@ -229,6 +249,7 @@ window.__ModuleLoader__.load({
 					badTildeUser: "~user form is not supported, use ~/…",
 					badDuplicate: "repeated rule",
 					badSegment: "expected one path name, for example .git",
+					conflict: "the profile changed after this form was loaded — the fresh revision is in place, check the values and save again",
 				},
 				zh: {
 					nav: "沙盒",
@@ -253,12 +274,17 @@ window.__ModuleLoader__.load({
 					badTildeUser: "不支持 ~user 形式，请使用 ~/…",
 					badDuplicate: "规则重复",
 					badSegment: "期望单个路径名，例如 .git",
+					conflict: "本表单载入后配置已被修改 — 已取到最新修订版本，请检查内容后再次保存",
 				},
 			})
 			const t = ctx.locale.bind("settings.sandbox")
 
 			const unwrap = function (response) {
-				if (response && response.ok === false) throw new Error(response.error && response.error.message ? response.error.message : "settings call failed")
+				if (response && response.ok === false) {
+					const failure = new Error(response.error && response.error.message ? response.error.message : "settings call failed")
+					failure.code = response.error && response.error.code ? response.error.code : ""
+					throw failure
+				}
 				return response && "value" in response ? response.value : response
 			}
 
@@ -286,7 +312,7 @@ window.__ModuleLoader__.load({
 							return { ok: true }
 						})
 						.catch(function (failure) {
-							return { ok: false, message: String((failure && failure.message) || failure) }
+							return { ok: false, code: (failure && failure.code) || "", message: String((failure && failure.message) || failure) }
 						})
 				},
 			}

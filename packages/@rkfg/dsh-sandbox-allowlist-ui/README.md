@@ -37,6 +37,22 @@ inert until it appears. `test/settings-ui-probe.mjs` drives this in a real
 browser: it opens the section, writes unusable rules, presses Save and asserts
 that all four captions appeared and the write was blocked.
 
+## Concurrent edits
+
+`describe()` returns the values together with a document revision, and `update()`
+carries that revision back: a write built on a stale snapshot is refused with
+`SETTINGS_CONFLICT` instead of silently overwriting someone else's change (the
+profile patch is editable from several tabs, the plugin manager, the CLI and a text
+editor at once). On that refusal the form keeps what the user typed, refreshes the
+revision and asks to save again.
+
+In practice the conflict is rare: the settings layer notifies open forms about
+document changes (`settings/document-updated`), and an open section re-reads its
+snapshot on its own — observed in a two-tab run, where the second tab's save moved
+the revision under the first tab before it pressed Save. The conflict branch is the
+fallback for the narrow race between that refresh and the click. The revision guard
+itself is covered by `test/revision-probe.js` (`DSH_PROBE=revision`).
+
 ## Model Experience
 
 ### Influence on the model context

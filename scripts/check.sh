@@ -58,6 +58,13 @@ for pkg in ('@rkfg/dsh-sandbox-allowlist', '@rkfg/dsh-sandbox-allowlist-ui'):
                 problems.append(f'{pkg}: файл иконки не найден: {icon}')
             elif target.stat().st_size > max_icon:
                 problems.append(f'{pkg}: иконка больше 256 КиБ: {icon}')
+    client_js = box / 'client.js'
+    if client_js.is_file():
+        found = re.search(r'__ModuleLoader__\.load\(\{\s*id:\s*"([^"]+)"', client_js.read_text(), re.S)
+        if found is None:
+            problems.append(f'{pkg}: в client.js нет регистрации __ModuleLoader__.load с id')
+        elif found.group(1) != data['name']:
+            problems.append(f"{pkg}: id клиентского модуля {found.group(1)!r} не равен имени пакета {data['name']!r} — страница не загрузится")
     files = set(data.get('files', []))
     for needed in ('locale', 'icon.svg'):
         if needed not in files:

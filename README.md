@@ -118,11 +118,22 @@ packages/@rkfg/dsh-sandbox-allowlist-ui/    Settings page (separate package: a c
 scripts/install.sh                    install into a profile, recreate mask stubs
 scripts/check.sh                      headless contour with generated fixtures
 scripts/webfull.sh                    web contour, probes, `serve` for browser debugging
+scripts/page-check.sh                 boots the web profile and loads it in a headless browser
 scripts/lint.sh                       node --check over every module
 test/                                 driver and probes used by the contours
 ```
 
 Code comments are in Russian; documentation is English with Russian copies (`README.ru.md`).
+
+### Renaming a package
+
+A rename touches more than the manifest, and a half-renamed package breaks the web page while the host runs perfectly:
+
+- the `id` passed to `window.__ModuleLoader__.load` inside `client.js` must equal the package name, or the browser loader reports `duplicate factory registration` and the page shows `Failed to load plugins`;
+- every `name:` in `cordis.patch.yml` must be quoted when the name is scoped — YAML rejects a plain scalar starting with `@`;
+- profiles keep the old name in `dsh.profile.bundles` and the old directory in `node_modules`; two packages with one name fail composition. `scripts/install.sh --drop <old-name>` removes both in a single write.
+
+`scripts/check.sh` asserts the first two statically; `scripts/page-check.sh` asserts the result by loading the page and reading its console. Run both before installing into a real profile.
 
 ## License
 

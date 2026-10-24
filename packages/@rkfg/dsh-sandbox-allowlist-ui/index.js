@@ -1,11 +1,11 @@
 /**
- * dsh-sandbox-allowlist-ui: единственная хостовая запись коробки.
+ * @rkfg/dsh-sandbox-allowlist-ui: единственная хостовая запись коробки.
  *
  * Пакет с клиентской половиной обязан иметь ровно одну запись загрузчика,
- * поэтому UI живёт отдельным бандлом, а не внутри dsh-sandbox-allowlist.
+ * поэтому UI живёт отдельным бандлом, а не внутри @rkfg/dsh-sandbox-allowlist.
  * Никакой логики здесь нет: правила читает и пишет слой настроек харнесса.
  *
- * @module dsh-sandbox-allowlist-ui
+ * @module @rkfg/dsh-sandbox-allowlist-ui
  */
 import { Service } from '@deepseek-ai/cordis'
 

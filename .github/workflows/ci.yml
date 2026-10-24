@@ -34,3 +34,9 @@ jobs:
 
       - name: Web contour (bundle plus Settings page)
         run: DSH_BUNDLE=1 DSH_UI=1 DSH_PROBE=driver DSH_TEST_TIMEOUT=90 bash scripts/webfull.sh
+
+      - name: Page boot check
+        run: |
+          sudo apt-get install -y chromium || true
+          CHROME_BIN="$(command -v chromium || command -v google-chrome || command -v google-chrome-stable)" \
+            bash scripts/page-check.sh

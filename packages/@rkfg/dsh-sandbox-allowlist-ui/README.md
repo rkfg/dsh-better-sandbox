@@ -15,6 +15,8 @@ A package declaring `dsh.client` must own exactly one Loader entry, otherwise th
 | `cordis.patch.yml` | bundle layer: that one entry |
 | `locale/en.json`, `locale/zh.json` | display metadata shown in Plugin Manager and the Settings inventory |
 
+The client bundle registers itself through `window.__ModuleLoader__.load` with an `id` that must equal the package name: the browser module table keys on that id, and a mismatch produces `duplicate factory registration` plus a dead page while the host side stays healthy. `scripts/check.sh` verifies the equality.
+
 The client declares the services it needs by name: `slots`, `locale`, `connection`, `remote`, `remote.settings`. UI strings exist in `en` and `zh` only — those are the two languages the harness interface supports.
 
 ## Why the form does not use its own Remote namespace

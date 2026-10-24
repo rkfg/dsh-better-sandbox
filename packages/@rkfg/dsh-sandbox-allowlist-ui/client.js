@@ -1,5 +1,5 @@
 /*
- * dsh-sandbox-allowlist-ui / клиентский раздел настроек песочницы.
+ * @rkfg/dsh-sandbox-allowlist-ui / клиентский раздел настроек песочницы.
  *
  * Читает и пишет правила через штатный слой настроек харнесса
  * (ctx.remote.settings): список правил становится volatile-полем строки
@@ -8,7 +8,7 @@
  * Формат — ручной бандл __ModuleLoader__, JSX не используется.
  */
 window.__ModuleLoader__.load({
-	id: "dsh-sandbox-allowlist-ui",
+	id: "@rkfg/dsh-sandbox-allowlist-ui",
 	factory: (require) => {
 		var module = { exports: {} }
 		var exports = module.exports

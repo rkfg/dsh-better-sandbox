@@ -110,7 +110,15 @@ const filled = await evaluate(`
   const last = areas[areas.length - 1]
   setter.call(last, ".git\\nnested/.git")
   last.dispatchEvent(new Event('input', { bubbles: true }))
-  return { areas: areas.length }`)
+  // the escalation level is a token rather than a list, so it gets a one-line box; a token
+  // with capitals or spaces must be refused the way an unusable rule line is
+  const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+  const token = [...document.querySelectorAll('input')].find((node) => (node.value || '').startsWith('write-segment'))
+  if (token !== undefined) {
+    inputSetter.call(token, 'Write Segment')
+    token.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  return { areas: areas.length, token: token !== undefined }`)
 await sleep(800)
 
 const saved = await evaluate(`
@@ -129,6 +137,7 @@ const verdict = await evaluate(`
     duplicate: grab(/repeated rule|规则重复/i),
     blocked: grab(/some lines are unusable|部分条目无法使用/i),
     segment: grab(/expected one path name|期望单个路径名/i),
+    token: grab(/expected one lowercase word|期望一个小写单词/i),
     raw: text.slice(0, 4000),
   }`)
 
@@ -141,8 +150,11 @@ if (saved !== true) failures.push('the Save button was not found')
 for (const key of ['relative', 'tildeUser', 'duplicate', 'blocked', 'segment']) {
   if (verdict[key] === null) failures.push(`the "${key}" caption never appeared`)
 }
+// The level field is only worth asserting when the page actually rendered it.
+if (filled.token !== true) failures.push('the escalation-level field was not rendered')
+else if (verdict.token === null) failures.push('the "token" caption never appeared for the escalation level')
 
-console.log('section opened:', section, '| fields:', filled.areas, '| Save clicked:', saved)
+console.log('section opened:', section, '| fields:', filled.areas, '| level field:', filled.token, '| Save clicked:', saved)
 console.log('captions:', JSON.stringify(verdict))
 const gitFlagged = String(verdict.raw ?? '').split(String.fromCharCode(10)).some((line) => /needs an absolute path|需要绝对路径/.test(line) && line.includes('.git'))
 if (gitFlagged) failures.push('the .git rule in the path-name field is flagged as invalid')

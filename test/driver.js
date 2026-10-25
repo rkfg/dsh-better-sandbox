@@ -14,6 +14,11 @@ import { fileURLToPath } from 'node:url'
 export const name = 'better-sandbox-driver'
 export const inject = ['fs', 'sandboxPolicy', 'sandbox', 'subprocess']
 
+// The contour knows which half it is running: with the plugin mounted, the driver declares
+// the plugin services as dependencies too, so cordis activates them before this entry and
+// the rule checks below see the real services instead of racing with the activation order.
+if (process.env.BETTER_SANDBOX_DRIVER_PLUGIN === '1') inject.push('betterSandbox', 'sandboxGuard', 'sandboxEscalation')
+
 const readAll = (handle, stream) => handle.collected?.[stream]?.readFrom(0)?.text ?? ''
 
 const DENIAL_SIGNATURES = ['read-only file system', 'permission denied', 'operation not permitted']
@@ -23,6 +28,23 @@ const WRITE_CASES = [
   ['fs write .git', '.git/fs-probe.txt'],
   ['fs write allowed dir', '../allowed/fs-probe.txt'],
   ['fs write denied dir', '../denied/fs-probe.txt'],
+]
+
+/** Under the level: the protected names are writable, the workspace boundary is not moved. */
+const LEVEL_WRITE_CASES = [
+  ['fs write .git (level)', '.git/level-probe.txt'],
+  ['fs write nested .git (level)', 'sub/.git/level-probe.txt'],
+  ['fs write denied dir (level)', '../denied/level-probe.txt'],
+]
+
+/** Same commands as BASH_CASES, confined under the level: $3 grant, $4 outside, $7 secret. */
+const LEVEL_BASH_CASES = [
+  ['bash git commit (level)', 'git -C "$2" -c user.email=t@t -c user.name=t commit -m t --allow-empty'],
+  ['bash write into .git (level)', 'printf x > "$2/.git/level-bash-probe.txt"'],
+  ['bash write into allowed (level)', 'printf x > "$3"'],
+  ['bash write into denied dir (level)', 'printf x > "$4"'],
+  ['bash cat secret file (level)', 'cat "$7"'],
+  ['bash ls secret dir (level)', 'ls "$6"'],
 ]
 
 const READ_CASES = [
@@ -57,6 +79,7 @@ export async function apply(ctx) {
   const cwd = process.cwd()
   const allow = ctx.get('betterSandbox')
   const guard = ctx.get('sandboxGuard')
+  const escalation = ctx.get('sandboxEscalation')
   const policy = ctx.sandboxPolicy.resolve()
   const out = []
   out.push(`policy: mode=${policy.mode} root=${policy.workspaceRoot}`)
@@ -78,6 +101,22 @@ export async function apply(ctx) {
     const path = pathOf(cwd, rel)
     try {
       await ctx.fs.writeText(await ctx.fs.resolve(path), 'ok\n', void 0, void 0, policy)
+      out.push(`${label}: WROTE`)
+    } catch (error) {
+      out.push(`${label}: DENIED ${error.code ?? error.name}`)
+    }
+  }
+
+  // The escalation level: one call, with the protected path names open and nothing else
+  // changed. The level token comes from config; an empty value means the level is off and
+  // these cases must read exactly like the ones above.
+  const level = allow?.segmentLevel ?? ''
+  const escalated = { ...policy, mode: level === '' ? policy.mode : level }
+  out.push(`escalation level: ${JSON.stringify(level)}`)
+  for (const [label, rel] of LEVEL_WRITE_CASES) {
+    const path = pathOf(cwd, rel)
+    try {
+      await ctx.fs.writeText(await ctx.fs.resolve(path), 'ok\n', void 0, void 0, escalated)
       out.push(`${label}: WROTE`)
     } catch (error) {
       out.push(`${label}: DENIED ${error.code ?? error.name}`)
@@ -114,6 +153,17 @@ export async function apply(ctx) {
   for (const [label, spec] of BASH_CASES) {
     args[2] = spec
     const confined = await ctx.sandbox.confine(args, policy)
+    const result = spawnSync(confined.argv[0], confined.argv.slice(1), { encoding: 'utf8', cwd })
+    const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
+    const signatures = confined.denialSignatures ?? DENIAL_SIGNATURES
+    out.push(
+      `${label}: exit=${result.status} denial-signature=${signatures.some((signature) => stderr.includes(signature))} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
+    )
+  }
+  // the same commands under the level: the protected names are open, the rest is intact
+  for (const [label, spec] of LEVEL_BASH_CASES) {
+    args[2] = spec
+    const confined = await ctx.sandbox.confine(args, escalated)
     const result = spawnSync(confined.argv[0], confined.argv.slice(1), { encoding: 'utf8', cwd })
     const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
     const signatures = confined.denialSignatures ?? DENIAL_SIGNATURES
@@ -167,6 +217,22 @@ export async function apply(ctx) {
     out.push(`Remote rejection from validate: ${remoteCode}`)
     const rejected = allow.validatePath('readDir', expected)
     out.push(`validate covers-workspace: ${rejected.ok ? 'NOT rejected (expected a denial!)' : rejected.reason}`)
+
+    // The vocabulary the model is offered: first what the mounted tools actually
+    // advertise (scripts/webfull.sh with DSH_PROBE=driver is where they are non-null),
+    // then `patchField` pointed at a field of the same shape, which proves the patch
+    // itself rather than the accident of which tools this profile mounts.
+    for (const name of ['bash', 'pwsh', 'write', 'edit']) {
+      const field = ctx.get('tools')?.get?.(name)?.parameters?.properties?.sandbox_permissions
+      out.push(`advertised by ${name}: ${JSON.stringify(field?.enum ?? null)}`)
+    }
+    const probe = { type: 'string', enum: ['workspace-write', 'danger-full-access'], description: 'base.' }
+    escalation.patchField(probe, 'command', 'probe')
+    escalation.patchField(probe, 'command', 'probe')
+    out.push(`patched enum: ${JSON.stringify(probe.enum)} :: hint=${probe.description.replace('base.', '').trim().slice(0, 72)}…`)
+    out.push(`segmentLevel of a reserved name: ${JSON.stringify(guard.validate('segmentLevel', 'workspace-write'))}`)
+    out.push(`segmentLevel of a good name: ${JSON.stringify(guard.validate('segmentLevel', 'write-cache'))}`)
+    out.push(`segmentLevel of an empty name (level off): ${JSON.stringify(guard.validate('segmentLevel', ''))}`)
 
   }
 

@@ -21,8 +21,18 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { canonical, findProtectedUnder, segmentDenied } from './policy.js'
+import { ESCALATION_TARGETS } from '@deepseek-ai/dsh-sandbox'
 
 const pluginDir = dirname(fileURLToPath(import.meta.url))
+
+/**
+ * Mode names a level may not take: the harness' own ladder. `read-only` is spelled out
+ * because the advertised escalation targets only list what a call may escalate TO.
+ */
+const RESERVED_MODES = new Set(['read-only', ...ESCALATION_TARGETS])
+
+/** A level token reaches the model-facing schema, so it is kept to a plain lowercase word. */
+const LEVEL_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/
 
 /**
  * Expands `~` and `~/…` into the home directory. A rule arrives as a string from
@@ -75,6 +85,12 @@ export default class BetterSandbox extends Service {
     ]),
     readDenyDirs: z.array(z.string()).default([]).volatile(),
     readDenyFiles: z.array(z.string()).default([]).volatile(),
+    /**
+     * The name of the escalation level that opens `denySegments` for one approved call
+     * (see `escalation.js`). An empty value turns the level off; the name must not
+     * collide with a mode of the harness ladder.
+     */
+    segmentLevel: z.string().default('write-segment').volatile(),
     /** When the mode-000 mask could not be created: hide the directory behind a tmpfs, or leave it unmasked. */
     maskFallback: z.union(['tmpfs', 'skip']).default('tmpfs'),
     /** Append "permission denied" to the runner's denial signatures, so a read refusal shows up as a policy denial. */
@@ -129,15 +145,21 @@ export default class BetterSandbox extends Service {
               lines.push(
                 `Protected path names inside every writable root (workspace-write mode): ${this.denySegments
                   .map((segment) => JSON.stringify(segment))
-                  .join(', ')} — writing there is refused the same way as writing outside the workspace, so escalate once with sandbox_permissions and a justification when the user genuinely needs it.`,
+                  .join(', ')} — writing there is refused the same way as writing outside the workspace.`,
               )
+              const level = this.segmentLevel
+              if (level !== '') {
+                lines.push(
+                  `Escalation level ${JSON.stringify(level)}: when a write or a command is refused only because of one of those names, retry that exact call once with sandbox_permissions set to ${JSON.stringify(level)} and a one-sentence justification. It opens every name above for that single call, with the user's approval; every other rule stays exactly as it is. Prefer it over a wider mode.`,
+                )
+              }
             }
             const reads = [...this.readDirs, ...this.readFiles]
             if (reads.length > 0) {
               lines.push(
                 `Protected from reading (secrets and personal data): ${reads
                   .map((path) => JSON.stringify(path))
-                  .join(', ')} — reading their contents is refused for tools and denied inside sandboxed commands; escalate once with sandbox_permissions and a justification only when the user explicitly needs that file.`,
+                  .join(', ')} — reading their contents is refused for tools and denied inside sandboxed commands. Nothing opens them for one call: an escalation cannot cover a read, so ask the user to change the rule when the file is genuinely needed.`,
               )
             }
             return lines.join('\n')
@@ -234,6 +256,39 @@ export default class BetterSandbox extends Service {
     return this.lists.readFiles
   }
 
+  /**
+   * The escalation level token in force, or `''` when it is switched off. A token that
+   * collides with the harness ladder or cannot be shown to the model is reported once and
+   * disables the level: silently keeping a broken name would advertise a mode nobody can
+   * grant.
+   */
+  get segmentLevel() {
+    const raw = String(this.resolved(this.config.segmentLevel) ?? '').trim()
+    if (raw === '') return ''
+    if (RESERVED_MODES.has(raw)) {
+      this.warnOnceLevel(`reserved-${raw}`, `better-sandbox: segmentLevel ${JSON.stringify(raw)} is a mode of the harness ladder, the level is off`)
+      return ''
+    }
+    if (!LEVEL_PATTERN.test(raw)) {
+      this.warnOnceLevel(`pattern-${raw}`, `better-sandbox: segmentLevel ${JSON.stringify(raw)} must be a lowercase word such as "write-segment", the level is off`)
+      return ''
+    }
+    return raw
+  }
+
+  /** Whether a policy mode is this plugin's level rather than a mode of the harness ladder. */
+  isSegmentLevel(mode) {
+    const level = this.segmentLevel
+    return level !== '' && mode === level
+  }
+
+  warnOnceLevel(key, message) {
+    if (this.warnedLevels?.has(key) === true) return
+    this.warnedLevels ??= new Set()
+    this.warnedLevels.add(key)
+    this.ctx.logger.warn(message)
+  }
+
   collectDirs(entries, self, field, sink) {
     const out = []
     for (const raw of entries) {
@@ -327,6 +382,7 @@ export default class BetterSandbox extends Service {
       denySegments: [...this.denySegments],
       readDenyDirs: [...this.readDirs],
       readDenyFiles: [...this.readFiles],
+      segmentLevel: this.segmentLevel,
       mask: { available: this.mask.available, fallback: this.config.maskFallback },
       rejected: this.lists.rejected,
       editable: true,
@@ -337,6 +393,15 @@ export default class BetterSandbox extends Service {
 
   /** Checks a path before it is added: absolute, not overlapping the harness itself, existing. */
   validatePath(kind, path) {
+    if (kind === 'segmentLevel') {
+      // The token is not a path: an empty value switches the level off, anything else has
+      // to be a plain lowercase word that is not a mode of the harness ladder.
+      const token = String(path ?? '').trim()
+      if (token === '') return { ok: true, path: '', exists: false }
+      if (RESERVED_MODES.has(token)) return { ok: false, reason: 'reserved-level', path: token }
+      if (!LEVEL_PATTERN.test(token)) return { ok: false, reason: 'level-pattern', path: token }
+      return { ok: true, path: token, exists: true }
+    }
     if (typeof path !== 'string' || path.trim() === '') return { ok: false, reason: 'empty' }
     const entry = expandHome(path.trim())
     if (!isAbsolute(entry)) return { ok: false, reason: 'relative' }

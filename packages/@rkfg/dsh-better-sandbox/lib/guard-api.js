@@ -15,7 +15,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 
 
 /** The rule kinds `validate` understands. */
-const KINDS = new Set(['writableDir', 'denySegment', 'readDir', 'readFile'])
+const KINDS = new Set(['writableDir', 'denySegment', 'readDir', 'readFile', 'segmentLevel'])
 
 export default class SandboxGuardApi extends TypertRemoteService {
   static inject = ['betterSandbox']
@@ -30,7 +30,10 @@ export default class SandboxGuardApi extends TypertRemoteService {
   }
 
   state() {
-    return this.allow.snapshot()
+    // Read lazily on purpose: declaring `sandboxEscalation` in `inject` would move this
+    // entry later in the activation order, and a consumer that only injects `sandboxGuard`
+    // would then read it as absent.
+    return { ...this.allow.snapshot(), escalation: this.ctx.get('sandboxEscalation')?.state?.() ?? null }
   }
 
   /**

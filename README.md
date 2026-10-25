@@ -6,6 +6,7 @@ Two things the built-in sandbox cannot express, and this plugin adds:
 
 - **Grants.** The built-in `workspace-write` mode allows one root plus temporary directories. Here you add the caches and toolchains an agent legitimately needs (`~/.cache`, `~/.ccache`, `/opt/go`, …) without falling back to `danger-full-access`.
 - **Denials.** `.git` inside every writable root becomes unwritable, and secret paths (`~/.ssh`, `~/.npmrc`, mounted shares) become unreadable — the tools get an honest `EACCES`, sandboxed commands get the same error plus a policy marker, so the model sees a refusal instead of file contents.
+- **A narrow escalation.** The built-in ladder offers only `workspace-write` and `danger-full-access`, so a refused `git commit` has to ask for the whole filesystem. The plugin adds one named level (`write-segment`): the approval card says that name, and the call runs with the protected path names writable and nothing else changed.
 
 Everything is enforced at the harness seams, not by wrapping the agent: the filesystem provider, the process-sandbox provider and the subprocess provider are replaced by subclasses that add the extra rules.
 
@@ -18,6 +19,30 @@ Everything is enforced at the harness seams, not by wrapping the agent: the file
 | Read masks | bind of a mode-000 empty directory/file over a protected path → `EACCES` | reads inside sandboxed commands; the mask is recreated automatically if deleted |
 | Search fence | wrapper around the harness ripgrep spawn, applying the same `bwrap` arguments | `glob`/`grep` tools that shell out to ripgrep |
 | Model context | an announcement block listing the grants and the protected paths | the model knows what is allowed before it tries |
+| Escalation level | the named target is added to the harness' strict-wider table and to the `sandbox_permissions` enum of `bash`, `pwsh`, `write`, `edit` | what the model may ask for, and what one approved call is given |
+
+## The escalation level
+
+A refusal under `workspace-write` is followed by one retry carrying `sandbox_permissions`.
+The built-in ladder offers `workspace-write` (no wider) and `danger-full-access` (the whole
+filesystem) — so committing costs the user a card that says *full access*, for a command
+that only needs `.git`. The plugin adds a third target, named `write-segment` by default:
+
+```
+Allow this operation with write-segment permissions: commit the fix
+git add -A && git commit -m "fix the fence"
+                                   [ Reject ] [ Allow once ]
+```
+
+Approving grants, for that one call only, exactly what the name says: the names from
+`denySegments` become writable. The call still runs under bwrap with the same workspace
+boundary, the same extra roots, and the same read masks — the contour below checks that a
+`git commit` succeeds under the level while `~/.ssh` and the paths outside the workspace
+stay refused. Rename the level with `segmentLevel`, or set it to an empty string to drop
+the target from the ladder entirely.
+
+A read cannot be escalated: no tool advertises `sandbox_permissions` for `read`, `glob` or
+`grep`, so opening a read-protected path means changing the rule.
 
 Protected reads fail closed: the mask is a real mount point with mode `000`, and the plugin re-creates it before each command if something removed it.
 
@@ -68,13 +93,14 @@ Then put the rule values in `~/.dsh/profiles/web/cordis.patch.yml`. The bundle l
     readDenyFiles:
       - /home/you/.npmrc
       - /home/you/.netrc
+    segmentLevel: write-segment
 ```
 
 Restart the profile. Adding entries and changing module code always needs a restart; editing the four lists does not.
 
 ## Settings page
 
-With `@rkfg/dsh-better-sandbox-ui` installed, the Settings dialog gains a **Sandbox** section: four text areas (one path per line) for writable roots, read-protected directories, read-protected files and protected path names. Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules immediately — remove a directory and it becomes readable in the next tool call, add it back and the next call is refused. The section is translated into English and Chinese, the two languages the harness UI supports.
+With `@rkfg/dsh-better-sandbox-ui` installed, the Settings dialog gains a **Sandbox** section: four text areas (one path per line) for writable roots, read-protected directories, read-protected files and protected path names, plus a one-line field naming the escalation level (empty turns the level off). Saving writes the profile patch through the harness settings layer, and the running session switches to the new rules immediately — remove a directory and it becomes readable in the next tool call, add it back and the next call is refused. Renaming the level rewrites the enum of the mounted tools without a restart. The section is translated into English and Chinese, the two languages the harness UI supports.
 
 ## Configuration
 
@@ -83,6 +109,7 @@ With `@rkfg/dsh-better-sandbox-ui` installed, the Settings dialog gains a **Sand
 | `writableDirs` | directories outside the workspace that may be written | yes (Settings) |
 | `denySegments` | path names that must stay unwritable inside every writable root | yes (Settings) |
 | `readDenyDirs`, `readDenyFiles` | hidden from reading via a mode-000 mask | yes (Settings) |
+| `segmentLevel` | name of the escalation level that opens the protected names for one approved call; empty turns it off | yes (Settings) |
 | `denyDepth`, `denyScanTtlMs`, `denySkipDirs` | how the confinement scans for protected names | no (restart) |
 | `maskFallback`, `readDenialSignature` | behaviour when the mask cannot be created, and the denial dialect added for masked reads | no (restart) |
 | `announceInPrompt` | add the rules to the model context | no (restart) |
@@ -109,6 +136,9 @@ Read them before trusting the setup — the plugin narrows what an agent can rea
 - Names of protected directories stay visible in a parent listing: the mask replaces the mount point, it does not filter the parent.
 - `git` over SSH inside a sandboxed command stops working while `~/.ssh` is read-protected; use `ssh-agent` or an extracted `known_hosts`.
 - Deleting a protected directory from outside (an escalated command) is not prevented.
+- A read cannot be escalated: `read`, `glob` and `grep` advertise no escalation fields, so a read-protected path opens only by changing the rule.
+- A persistent terminal or pwsh session keeps the confinement it was started with — the level covers one call, so an already open shell is not re-confined.
+- The level extends a vocabulary the harness owns: the target is written into the tool schemas when they mount and repaired on `tools/change`. If the level stops appearing on the card after a harness upgrade, that seam is the first place to look; the dependency pins hold the harness version for exactly this reason.
 - The Settings page blocks unusable syntax (relative path without `~/`, `~user`, duplicate) in red and refuses to save; it cannot check existence, because the page has no channel to the plugin service, so a rule for a missing directory is accepted and inert until that directory appears.
 
 ## Related work

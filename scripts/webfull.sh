@@ -85,6 +85,8 @@ const rows = bundle
       '    - id: better-sandbox',
       '      name: ./better-sandbox/rules.js',
       ...lists('      '),
+      '    - id: better-sandbox-escalation',
+      '      name: ./better-sandbox/escalation.js',
       '    - id: better-sandbox-fs',
       '      name: ./better-sandbox/fs.js',
       '    - id: better-sandbox-runner',
@@ -101,6 +103,12 @@ if (probes[probe] !== void 0) {
 }
 fs.writeFileSync(path.join(prof, 'cordis.patch.yml'), `${rows.join('\n')}\n`)
 NODE
+
+# The driver probe reads the plugin services, so it declares them as dependencies; this
+# profile always has them, which is also what makes the advertised escalation enums visible.
+if [[ ${DSH_PROBE:-} == driver ]]; then
+  export BETTER_SANDBOX_DRIVER_PLUGIN=1
+fi
 
 mkdir -p "$DSH_HOME/allowed" "$DSH_HOME/run/secretdir/nested"
 echo secret > "$DSH_HOME/run/secretdir/k.txt"

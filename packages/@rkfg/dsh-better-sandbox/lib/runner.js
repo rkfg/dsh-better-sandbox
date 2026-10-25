@@ -10,6 +10,10 @@
  * Landlock can neither subtract write access from a broader rule nor deny reading a
  * subpath — the protection cannot be expressed there, which a warning reports.
  *
+ * An escalated call carries the plugin's level token as its mode; `confine` normalizes it
+ * to `workspace-write` for the base provider and drops the read-only returns over the
+ * protected names for that run only (`escalation.js` puts the token in the vocabulary).
+ *
  * @module dsh-better-sandbox/runner
  */
 import LocalSandboxProvider from '@deepseek-ai/dsh-sandbox-local'
@@ -44,8 +48,13 @@ export default class BetterSandboxProvider extends LocalSandboxProvider {
   }
 
   async confine(argv, policy, signal) {
-    const base = await super.confine(argv, policy, signal)
     const allow = this.allow
+    // The escalation level is a token of this plugin, not a mode the base provider knows:
+    // handed through as-is it would build a profile with no writable root at all. It means
+    // `workspace-write` minus the read-only returns over the protected names.
+    const escalated = allow.isSegmentLevel(policy.mode)
+    const effective = escalated ? { ...policy, mode: 'workspace-write' } : policy
+    const base = await super.confine(argv, effective, signal)
     const guarded = allow.roots.length > 0 || allow.denySegments.length > 0 || allow.readDirs.length > 0 || allow.readFiles.length > 0
     if (!guarded) return base
     const separator = base.argv.indexOf('--')
@@ -63,7 +72,14 @@ export default class BetterSandboxProvider extends LocalSandboxProvider {
     }
     const result = runner === 'bwrap'
       ? (() => {
-          const extra = bwrapGuardArgs(allow, policy, [policy.workspaceRoot, ...allow.roots], (key, message) => this.warnOnce(key, message), policy.mode === 'workspace-write')
+          const extra = bwrapGuardArgs(
+            allow,
+            effective,
+            [effective.workspaceRoot, ...allow.roots],
+            (key, message) => this.warnOnce(key, message),
+            effective.mode === 'workspace-write',
+            escalated,
+          )
           return extra.length === 0 ? base : {
             ...base,
             argv: [...base.argv.slice(0, separator), ...extra, ...base.argv.slice(separator)],

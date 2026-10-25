@@ -345,6 +345,9 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
         readDenyFiles:
           - $DSH_HOME/secretfile.txt
           - $DSH_HOME/run/../nonexistent-secret
+        segmentLevel: write-segment
+    - id: better-sandbox-escalation
+      name: ./better-sandbox/escalation.js
     - id: better-sandbox-fs
       name: ./better-sandbox/fs.js
     - id: better-sandbox-runner
@@ -354,7 +357,11 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
 PATCH
 
 run_profile() {
-  (cd "$DSH_HOME/run" && timeout "${DSH_TEST_TIMEOUT:-90}" dsh --profile "$1" 2>/dev/null) | sed -n '/==== RESULT/,/================/p'
+  local name=$1
+  # The driver declares the plugin services as dependencies only in the profile that has
+  # them, so cordis activates the plugin before the driver instead of racing it.
+  local plugin=${2:-0}
+  (cd "$DSH_HOME/run" && BETTER_SANDBOX_DRIVER_PLUGIN="$plugin" timeout "${DSH_TEST_TIMEOUT:-90}" dsh --profile "$name" 2>/dev/null) | sed -n '/==== RESULT/,/================/p'
 }
 
 echo
@@ -362,7 +369,7 @@ echo "### basetest: built-in providers (expect DENIED in allowed and in .git)"
 run_profile basetest
 
 echo
-echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git)"
-run_profile allowtest
+echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git; the (level) cases expect WROTE in .git and DENIED outside the workspace)"
+run_profile allowtest 1
 
 exit $((manifest_status || language_status || table_status || russian_status || workspace_status || dependency_status))

@@ -1,8 +1,8 @@
 {
   "name": "@rkfg/dsh-better-sandbox",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
-  "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names, read-protected paths.",
+  "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names with a narrow escalation level for them, read-protected paths.",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -12,6 +12,7 @@
     ".": "./lib/rules.js",
     "./bundle": "./lib/bundle.js",
     "./fs": "./lib/fs.js",
+    "./escalation": "./lib/escalation.js",
     "./runner": "./lib/runner.js",
     "./subprocess": "./lib/subprocess.js",
     "./guard-api": "./lib/guard-api.js",

@@ -16,6 +16,8 @@
 - insert:
     - id: better-sandbox
       name: '@rkfg/dsh-better-sandbox/rules'
+    - id: better-sandbox-escalation
+      name: '@rkfg/dsh-better-sandbox/escalation'
     - id: better-sandbox-fs
       name: '@rkfg/dsh-better-sandbox/fs'
     - id: better-sandbox-runner

@@ -25,7 +25,13 @@ window.__ModuleLoader__.load({
 			{ key: "readDenyDirs", hintKey: "hintReadDenyDirs", kind: "path" },
 			{ key: "readDenyFiles", hintKey: "hintReadDenyFiles", kind: "path" },
 			{ key: "denySegments", hintKey: "hintDenySegments", kind: "segment" },
+			// One word, not a list: the name of the escalation level that opens the path
+			// names above for a single approved call. Empty turns the level off.
+			{ key: "segmentLevel", hintKey: "hintSegmentLevel", kind: "token" },
 		]
+
+		/** The mode names of the harness ladder: a level may not borrow one of them. */
+		const RESERVED_LEVELS = ["read-only", "workspace-write", "danger-full-access"]
 
 		const style = {
 			wrap: { display: "flex", flexDirection: "column", gap: 14, maxWidth: 760 },
@@ -33,6 +39,7 @@ window.__ModuleLoader__.load({
 			label: { fontSize: 14, fontWeight: 500 },
 			hint: { color: "var(--dsw-alias-label-tertiary)", fontSize: 12 },
 			area: { fontFamily: "var(--ds-font-family-code, monospace)", fontSize: 13, minHeight: 78, padding: "8px 10px", borderRadius: 8, border: ".5px solid var(--dsw-alias-border-l4, #999)", background: "var(--dsw-alias-bg-layer-1, transparent)", color: "inherit", width: "100%", boxSizing: "border-box" },
+			input: { fontFamily: "var(--ds-font-family-code, monospace)", fontSize: 13, padding: "8px 10px", borderRadius: 8, border: ".5px solid var(--dsw-alias-border-l4, #999)", background: "var(--dsw-alias-bg-layer-1, transparent)", color: "inherit", width: "100%", boxSizing: "border-box" },
 			row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
 			button: { padding: "6px 12px", fontSize: 13, borderRadius: 8, cursor: "pointer" },
 			note: { color: "var(--dsw-alias-label-tertiary)", fontSize: 12 },
@@ -41,6 +48,30 @@ window.__ModuleLoader__.load({
 
 		const lines = (value) => (Array.isArray(value) ? value : []).map((item) => String(item)).join("\n")
 		const toLines = (text) => text.split("\n").map((line) => line.trim()).filter((line) => line !== "")
+		/** The stored value as the text of its control: one word for a token, one rule per line otherwise. */
+		const textOf = function (value, kind) {
+			return kind === "token" ? String(value ?? "") : lines(value)
+		}
+
+		/**
+		 * The escalation level is a single word that reaches the model-facing schema, so it
+		 * is checked as a token: lowercase, no spaces, and not one of the harness' own mode
+		 * names. An empty field is legitimate and means the level is switched off.
+		 *
+		 * @param text - the contents of the field.
+		 * @returns the list of problems: { entry, reason }.
+		 */
+		const checkToken = function (text) {
+			const value = String(text).trim()
+			if (value === "") return []
+			if (RESERVED_LEVELS.includes(value)) return [{ entry: value, reason: "reservedLevel" }]
+			if (!/^[a-z][a-z0-9_-]{0,31}$/.test(value)) return [{ entry: value, reason: "token" }]
+			return []
+		}
+
+		const checkField = function (text, kind) {
+			return kind === "token" ? checkToken(text) : checkLines(text, kind)
+		}
 
 		/**
 		 * Rule-line validation runs in the browser. The two kinds of field have their
@@ -102,10 +133,10 @@ window.__ModuleLoader__.load({
 						}
 						const values = {}
 						const value = descriptor.value ?? {}
-						for (const field of FIELDS) values[field.key] = lines(value[field.key])
+						for (const field of FIELDS) values[field.key] = textOf(value[field.key], field.kind)
 						setDrafts(values)
 						const found = {}
-						for (const field of FIELDS) found[field.key] = checkLines(values[field.key], field.kind)
+						for (const field of FIELDS) found[field.key] = checkField(values[field.key], field.kind)
 						setIssues(found)
 						setError("")
 						setStatus(t("revision") + " " + descriptor.revision)
@@ -127,7 +158,7 @@ window.__ModuleLoader__.load({
 				const found = {}
 				let broken = 0
 				for (const field of FIELDS) {
-					found[field.key] = checkLines(drafts[field.key], field.kind)
+					found[field.key] = checkField(drafts[field.key], field.kind)
 					broken += found[field.key].length
 				}
 				setIssues(found)
@@ -137,9 +168,10 @@ window.__ModuleLoader__.load({
 				}
 				const patch = {}
 				for (const field of FIELDS) {
-					const next = toLines(drafts[field.key])
+					const next = field.kind === "token" ? String(drafts[field.key]).trim() : toLines(drafts[field.key])
 					const current = (state.value ?? {})[field.key]
-					if (lines(next) !== lines(current)) patch[field.key] = next
+					const changed = field.kind === "token" ? next !== String(current ?? "") : lines(next) !== lines(current)
+					if (changed) patch[field.key] = next
 				}
 				if (Object.keys(patch).length === 0) {
 					setStatus(t("unchanged"))
@@ -181,27 +213,43 @@ window.__ModuleLoader__.load({
 				h("p", { style: style.note }, t("intro")),
 				error === "" ? null : h("div", { style: style.error }, error),
 				FIELDS.map(function (field) {
+					const value = drafts === null ? "" : drafts[field.key]
+					const broken = issues[field.key] && issues[field.key].length > 0
+					const marked = function (base) {
+						return broken ? Object.assign({}, base, { borderColor: "var(--dsw-alias-state-error-primary, #c9541f)" }) : base
+					}
+					const onChange = function (event) {
+						const next = event.target.value
+						setDrafts(function (prev) {
+							return Object.assign({}, prev, (function () { var patch = {}; patch[field.key] = next; return patch })())
+						})
+						setIssues(function (prev) {
+							return Object.assign({}, prev, (function () { var patch = {}; patch[field.key] = checkField(next, field.kind); return patch })())
+						})
+					}
 					return h(
 						"label",
 						{ key: field.key, style: style.field },
 						h("span", { style: style.label }, t(field.key)),
 						h("span", { style: style.hint }, t(field.hintKey)),
-						h("textarea", {
-							style: (issues[field.key] && issues[field.key].length > 0) ? Object.assign({}, style.area, { borderColor: "var(--dsw-alias-state-error-primary, #c9541f)" }) : style.area,
-							value: drafts === null ? "" : drafts[field.key],
-							disabled: busy,
-							spellCheck: false,
-							onChange: function (event) {
-								const value = event.target.value
-								setDrafts(function (prev) {
-									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = value; return next })())
+						// A token is one word, so it gets a one-line box; a rule list keeps the area.
+						field.kind === "token"
+							? h("input", {
+									style: marked(style.input),
+									type: "text",
+									value: value,
+									disabled: busy,
+									spellCheck: false,
+									onChange: onChange,
 								})
-								setIssues(function (prev) {
-									return Object.assign({}, prev, (function () { var next = {}; next[field.key] = checkLines(value, field.kind); return next })())
-								})
-							},
-						}),
-						issues[field.key] && issues[field.key].length > 0
+							: h("textarea", {
+									style: marked(style.area),
+									value: value,
+									disabled: busy,
+									spellCheck: false,
+									onChange: onChange,
+								}),
+						broken
 							? h(
 									"div",
 									{ style: style.error },
@@ -228,7 +276,7 @@ window.__ModuleLoader__.load({
 			const locale = ctx.locale.register("settings.sandbox", {
 				en: {
 					nav: "Sandbox",
-					intro: "Write grants outside the workspace and read-protected paths. Changes apply without a restart.",
+					intro: "Write grants outside the workspace, read-protected paths, and the escalation level that opens the protected path names for one approved call. Changes apply without a restart.",
 					loading: "loading rules…",
 					missing: "better-sandbox entry not found — the sandbox plugin is not mounted.",
 					revision: "revision",
@@ -240,20 +288,24 @@ window.__ModuleLoader__.load({
 					readDenyDirs: "Read-protected directories",
 					readDenyFiles: "Read-protected files",
 					denySegments: "Path names refused for writing",
+					segmentLevel: "Escalation level that opens those names",
 					hintWritableDirs: "one directory per line",
 					hintReadDenyDirs: "keys, tokens, personal data",
 					hintReadDenyFiles: "one file per line",
 					hintDenySegments: "for example .git",
+					hintSegmentLevel: "one word, for example write-segment; empty turns the level off",
 					blocked: "some lines are unusable — fix the marked entries before saving",
 					badRelative: "needs an absolute path or ~/…",
 					badTildeUser: "~user form is not supported, use ~/…",
 					badDuplicate: "repeated rule",
 					badSegment: "expected one path name, for example .git",
+					badToken: "expected one lowercase word, for example write-segment",
+					badReservedLevel: "that name is a mode of the built-in ladder, the level needs another one",
 					conflict: "the profile changed after this form was loaded — the fresh revision is in place, check the values and save again",
 				},
 				zh: {
 					nav: "沙盒",
-					intro: "工作区之外的写入授权与禁止读取的路径。修改即时生效，无需重启。",
+					intro: "工作区之外的写入授权、禁止读取的路径，以及为单次已批准的调用开放受保护路径名称的提权级别。修改即时生效，无需重启。",
 					loading: "正在加载规则…",
 					missing: "未找到 better-sandbox 配置项 — 沙盒插件未挂载。",
 					revision: "修订版本",
@@ -265,15 +317,19 @@ window.__ModuleLoader__.load({
 					readDenyDirs: "禁止读取的目录",
 					readDenyFiles: "禁止读取的文件",
 					denySegments: "禁止写入的路径名称",
+					segmentLevel: "开放这些名称的提权级别",
 					hintWritableDirs: "每行一个目录",
 					hintReadDenyDirs: "密钥、令牌、个人数据",
 					hintReadDenyFiles: "每行一个文件",
 					hintDenySegments: "例如 .git",
+					hintSegmentLevel: "一个单词，例如 write-segment；留空表示关闭该级别",
 					blocked: "部分条目无法使用 — 请先修正标记的行",
 					badRelative: "需要绝对路径或 ~/…",
 					badTildeUser: "不支持 ~user 形式，请使用 ~/…",
 					badDuplicate: "规则重复",
 					badSegment: "期望单个路径名，例如 .git",
+					badToken: "期望一个小写单词，例如 write-segment",
+					badReservedLevel: "该名称属于内置模式，提权级别需要另一个名称",
 					conflict: "本表单载入后配置已被修改 — 已取到最新修订版本，请检查内容后再次保存",
 				},
 			})

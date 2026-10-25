@@ -31,8 +31,11 @@ export const bwrapBaseArgs = (mode) => {
  * @param warn - warning callback (the caller emits one call per reason).
  * @param applyWriteGuards - whether to apply grants and read-only returns (only
  *   `workspace-write`); read masks apply under any confinement.
+ * @param exemptProtected - skip the read-only returns for the protected path names, which
+ *   is what the `write-segment` escalation level means: the names inherit the write access
+ *   of the root they live in, and nothing else changes.
  */
-export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards) {
+export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards, exemptProtected = false) {
   const args = []
   if (applyWriteGuards) {
     for (const root of allow.roots) {
@@ -42,11 +45,13 @@ export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards) 
       }
       args.push('--bind', root, root)
     }
-    for (const path of allow.protectedUnder(confined)) {
-      // The path may have disappeared between the cached scan and the command launch, and
-      // bwrap fails outright on a missing source — so it is checked right here.
-      if (!existsSync(path)) continue
-      args.push('--ro-bind', path, path)
+    if (!exemptProtected) {
+      for (const path of allow.protectedUnder(confined)) {
+        // The path may have disappeared between the cached scan and the command launch, and
+        // bwrap fails outright on a missing source — so it is checked right here.
+        if (!existsSync(path)) continue
+        args.push('--ro-bind', path, path)
+      }
     }
   }
   for (const dir of allow.readDirs) {

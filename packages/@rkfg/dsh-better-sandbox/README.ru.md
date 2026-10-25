@@ -10,6 +10,7 @@
 | Модуль | Роль |
 |---|---|
 | `lib/rules.js` | сервис `betterSandbox`: эффективные списки правил, отбраковка неприменимых (`rejected`), маска mode 000 |
+| `lib/escalation.js` | вписывает именованный уровень эскалации в словарь харнесса: таблицу «строже шире» и enum `sandbox_permissions` инструментов |
 | `lib/fs.js` | провайдер `fs`: забор на запись + запрет чтения |
 | `lib/runner.js` | провайдер `sandbox`: аргументы bwrap для команд |
 | `lib/subprocess.js` | провайдер `subprocess`: оборачивает в bwrap только ripgrep (иначе `grep`/`glob` читают закрытое) |
@@ -23,8 +24,8 @@
 
 ## Раздел настроек
 
-Правила правятся в веб-UI: диалог настроек → раздел **Sandbox** (четыре поля, по
-строке на путь) → «Save». Раздел приносит отдельный бандл
+Правила правятся в веб-UI: диалог настроек → раздел **Sandbox** (четыре поля со
+списками, по строке на значение, и одно поле с именем уровня эскалации) → «Save». Раздел приносит отдельный бандл
 `@rkfg/dsh-better-sandbox-ui`: пакет с клиентской половиной обязан иметь ровно одну
 запись загрузчика, поэтому он не может жить внутри `@rkfg/dsh-better-sandbox`.
 Подписи раздела существуют в `en` и `zh`; по-русски они появятся вместе с
@@ -136,15 +137,23 @@ DSH_BUNDLE=1 DSH_PROBE=driver ./scripts/webfull.sh     # полный веб-п�
 
 Секция `sandbox:rules` добавляется к контексту рантайма сразу после секции
 политики песочницы (`SANDBOX_POLICY`) и существует, только если хотя бы один список
-не пуст и `announceInPrompt` включён. Текст строится по трём шаблонам:
+не пуст и `announceInPrompt` включён. Текст строится по четырём шаблонам; третий
+появляется только при непустом списке защищённых имён и включённом уровне.
 
 ##### Verbatim text for this field
 
 ```markdown
 Additional write roots beyond the session workspace (workspace-write mode only): <список путей в кавычках, через запятую>.
-Protected path names inside every writable root (workspace-write mode): <список имён в кавычках> — writing there is refused the same way as writing outside the workspace, so escalate once with sandbox_permissions and a justification when the user genuinely needs it.
-Protected from reading (secrets and personal data): <каталоги и файлы в кавычках, через запятую> — reading their contents is refused for tools and denied inside sandboxed commands; escalate once with sandbox_permissions and a justification only when the user explicitly needs that file.
+Protected path names inside every writable root (workspace-write mode): <список имён в кавычках> — writing there is refused the same way as writing outside the workspace.
+Escalation level "<токен>": when a write or a command is refused only because of one of those names, retry that exact call once with sandbox_permissions set to "<токен>" and a one-sentence justification. It opens every name above for that single call, with the user's approval; every other rule stays exactly as it is. Prefer it over a wider mode.
+Protected from reading (secrets and personal data): <каталоги и файлы в кавычках, через запятую> — reading their contents is refused for tools and denied inside sandboxed commands. Nothing opens them for one call: an escalation cannot cover a read, so ask the user to change the rule when the file is genuinely needed.
 ```
+
+Кроме того, `lib/escalation.js` дописывает одно предложение к описанию параметра
+`sandbox_permissions` у `bash`, `pwsh`, `write`, `edit`: оттуда модель узнаёт, что
+существует цель уже, чем `danger-full-access`. Другого канала нет — отказ `write` и
+`edit` инструмент перезаписывает общим маркером с подсказкой, и текст плагина туда не
+попадает.
 
 #### Token effect
 
@@ -168,7 +177,9 @@ Append-only относительно политики песочницы: сек
 раннера попадают в результат инструмента. Пакет поставляет текст причины отказа
 чтения (`"<путь>" is protected from reading by the better-sandbox policy`) и
 дополняет диалект bwrap сигнатурой `permission denied`, чтобы bash показал
-политический отказ с подсказкой об эскалации, а не системную ошибку.
+политический отказ, а не системную ошибку. Подсказку об эскалации в отказе чтения
+плагин намеренно не пишет: ни один инструмент не объявляет `sandbox_permissions` для
+чтения, поэтому такая подсказка отправила бы модель в ошибку схемы.
 
 #### Token effect
 
@@ -183,6 +194,16 @@ Independent: сообщения об отказах принадлежат ис�
 
 ## Known Limitations and Deferred Work
 
+- **Чтение эскалации не имеет** — `read`, `glob` и `grep` не объявляют
+  `sandbox_permissions`, а методы чтения файлового провайдера вообще не получают
+  политику. Уровень покрывает две мутации и confined-оболочки; открыть закрытый от
+  чтения путь можно только сменой правила.
+- **Имя уровня — словарь модели** — одно строчное слово, не совпадающее с
+  `read-only`, `workspace-write`, `danger-full-access`; иначе плагин пишет
+  предупреждение и выключает уровень, вместо того чтобы предлагать цель, которую
+  некому выдать.
+- **Постоянные оболочки помнят свой confinement** — терминал и pwsh-сессия
+  сохраняют правила, полученные при запуске; уровень действует на один вызов.
 - **Глубина `.git` в bwrap ограничена `denyDepth`** — сегмент имени проверяется на
   любой глубине в `ctx.fs`, но в confinement только до `denyDepth`; глубже нужна
   правка поля, и это рестарт.

@@ -9,6 +9,10 @@
  *             puts no fence on reading at all (`read` is allowed in every mode),
  *             so the refusal is raised with the same FS_SANDBOX_DENIED code: the
  *             tools then show the regular `[sandbox: …]` marker and the escalation hint.
+ * An escalated call may carry this plugin's own level token instead of a mode of the
+ * harness ladder (`write-segment`): it means `workspace-write` with the protected names
+ * let through for this one call, so the token is normalized to a mode the base fence
+ * understands and only the name check is skipped.
  * danger-full-access behaves as in the harness — no fence: escalation leads there, and
  * it removes the protection deliberately, on the user's approval.
  *
@@ -16,7 +20,7 @@
  */
 import SandboxedFileSystem from '@deepseek-ai/dsh-fs-sandbox'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import { escalationHintMarker, sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
+import { sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -40,13 +44,15 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
   denyRead(displayPath, key, operation, allowDirRoot = true) {
     const protectedBy = this.allow.readDeniedFor(key, allowDirRoot)
     if (protectedBy === void 0) return
-    // For write/edit the tool substitutes the marker and the hint itself; for reading
-    // it does not, so the text is assembled here with the same helpers.
+    // For write/edit the tool substitutes its own marker and hint; for reading it does
+    // not, so the text is assembled here. The hint of the shared vocabulary is left out
+    // on purpose: no tool advertises sandbox_permissions for a read, so telling the model
+    // to escalate one sends it into a schema error instead of a decision.
     throw new FsError(
       [
         sandboxDenialMarker('workspace-write'),
-        escalationHintMarker('operation'),
-        `cannot ${operation} "${displayPath}": "${protectedBy}" is protected from reading by the better-sandbox policy`,
+        `[better-sandbox: "${protectedBy}" is protected from reading by the better-sandbox policy; no escalation opens a read, the user has to change the rule]`,
+        `cannot ${operation} "${displayPath}"`,
       ].join('\n'),
       'FS_SANDBOX_DENIED',
     )
@@ -65,9 +71,14 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
   async checkedTarget(target, sandboxPolicy) {
     const policy = sandboxPolicy ?? this.ctx.sandboxPolicy.resolve()
     const allow = this.allow
-    if (policy.mode === 'workspace-write' && (allow.roots.length > 0 || allow.denySegments.length > 0)) {
+    const escalated = allow.isSegmentLevel(policy.mode)
+    // The level is `workspace-write` with the protected names let through, so the base
+    // fence is handed a mode it knows instead of an unknown token it would treat as
+    // "containment against no roots at all".
+    const base = escalated ? { ...policy, mode: 'workspace-write' } : policy
+    if (base.mode === 'workspace-write' && (allow.roots.length > 0 || allow.denySegments.length > 0)) {
       const fresh = await this.resolve(target.displayPath)
-      const denied = allow.deniedSegment(fresh.targetKey)
+      const denied = escalated ? void 0 : allow.deniedSegment(fresh.targetKey)
       if (denied !== void 0) {
         throw new FsError(
           `cannot write "${target.displayPath}": "${denied}" is protected by the better-sandbox policy`,
@@ -76,7 +87,7 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
       }
       for (const root of allow.roots) if (isUnder(fresh.targetKey, root)) return fresh
     }
-    return super.checkedTarget(target, sandboxPolicy)
+    return super.checkedTarget(target, base)
   }
 
   async stat(target, signal) {

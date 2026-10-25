@@ -79,7 +79,15 @@ export default class BetterSandboxEscalation extends Service {
     ctx.effect(() => {
       const offChange = ctx.on('tools/change', () => this.apply())
       const offVolatile = ctx.on('loader/volatile-update', () => this.apply())
-      this.apply()
+      try {
+        this.apply()
+      } catch (error) {
+        // The level is written into arrays shared by the whole process. If the entry
+        // failed halfway, the rows it already appended have to leave with it — the
+        // effect's own cleanup would only remove the two subscriptions.
+        this.revert(offChange, offVolatile)
+        throw error
+      }
       return () => this.revert(offChange, offVolatile)
     }, 'better-sandbox: escalation level')
   }

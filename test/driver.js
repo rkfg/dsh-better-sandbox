@@ -45,6 +45,9 @@ const LEVEL_BASH_CASES = [
   ['bash write into denied dir (level)', 'printf x > "$4"'],
   ['bash cat secret file (level)', 'cat "$7"'],
   ['bash ls secret dir (level)', 'ls "$6"'],
+  // the level opens write-protected NAMES, not read-protected paths: writing into a
+  // masked directory stays refused even under the level
+  ['bash write into secret dir (level)', 'printf x > "$6/level-attempt.txt"'],
 ]
 
 const READ_CASES = [

@@ -93,6 +93,8 @@ const rows = bundle
       '      name: ./better-sandbox/runner.js',
       '    - id: better-sandbox-subprocess',
       '      name: ./better-sandbox/subprocess.js',
+      '    - id: better-sandbox-guard',
+      '      name: ./better-sandbox/guard-api.js',
     ]
 
 const probes = { driver: 'driver', 'settings-write': 'settings-write-probe', 'revision': 'revision-probe', loader: 'loader-probe' }

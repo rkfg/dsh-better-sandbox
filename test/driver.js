@@ -226,6 +226,10 @@ export async function apply(ctx) {
       const field = ctx.get('tools')?.get?.(name)?.parameters?.properties?.sandbox_permissions
       out.push(`advertised by ${name}: ${JSON.stringify(field?.enum ?? null)}`)
     }
+    // Which layer the composition put the tools on: an empty list means the tool plugins
+    // are mounted on the agent plane, where a context-global `get()` cannot reach them.
+    out.push(`tools visible globally: ${JSON.stringify((ctx.get('tools')?.schemas?.() ?? []).map((schema) => schema.name).sort())}`)
+    out.push(`escalation ladder: ${JSON.stringify(escalation.state().ladder)}`)
     const probe = { type: 'string', enum: ['workspace-write', 'danger-full-access'], description: 'base.' }
     escalation.patchField(probe, 'command', 'probe')
     escalation.patchField(probe, 'command', 'probe')

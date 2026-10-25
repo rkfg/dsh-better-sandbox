@@ -15,7 +15,7 @@
 # This script is for installing from a working tree: it checks the syntax, backs up the
 # profile's package.json, and re-creates the mask stubs that bwrap takes as source paths.
 #
-set -uo pipefail
+set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 home=${DSH_HOME:-"$HOME/.dsh"}
 profile=web
@@ -29,6 +29,13 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# Every path below is built by joining these two, so they are resolved once here, and the
+# profile has to be one name: a value carrying a separator would aim the install, and the
+# removal of an old package folder, somewhere else entirely.
+[[ -d $home ]] || { echo "no such DSH_HOME: $home" >&2; exit 1; }
+home=$(cd "$home" && pwd -P)
+[[ -n $profile && $profile != */* && $profile != .* ]] || { echo "the profile name is one path segment: $profile" >&2; exit 2; }
 
 src="$root/packages/@rkfg/dsh-better-sandbox"
 uipkg="$root/packages/@rkfg/dsh-better-sandbox-ui"
@@ -75,10 +82,16 @@ const wanted = ['@rkfg/dsh-better-sandbox', '@rkfg/dsh-better-sandbox-ui']
 const dropped = (process.env.DROP ? process.env.DROP.split('\n').filter(Boolean) : [])
 // A dropped package folder may still hold the mode-000 mask stubs: rmSync cannot
 // descend into them, so they are made writable first (same rule as deleting the
-// folder by hand).
+// folder by hand). A stub that is no longer a stub is removed rather than chmodded:
+// chmod follows a symlink and would change the mode of whatever the stub was
+// replaced with.
 const removePackage = (dir) => {
   for (const stub of [`${dir}/lib/.mask/empty-dir`, `${dir}/lib/.mask/empty-file`]) {
-    try { fs.chmodSync(stub, 0o755) } catch {}
+    try {
+      const info = fs.lstatSync(stub)
+      if (info.isSymbolicLink()) fs.rmSync(stub, { force: true })
+      else fs.chmodSync(stub, 0o755)
+    } catch {}
   }
   if (!fs.existsSync(dir)) return false
   fs.rmSync(dir, { recursive: true, force: true })

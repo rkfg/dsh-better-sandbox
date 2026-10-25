@@ -16,11 +16,11 @@
 import { Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { isVolatile } from '@deepseek-ai/cosmokit'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { canonical, findProtectedUnder, segmentDenied } from './policy.js'
+import { canonical, findProtectedUnder, isUnder, segmentDenied, stubProblem, TRUNCATED_REPORT_LIMIT } from './policy.js'
 import { ESCALATION_TARGETS } from '@deepseek-ai/dsh-sandbox'
 
 const pluginDir = dirname(fileURLToPath(import.meta.url))
@@ -48,15 +48,49 @@ const expandHome = (entry) => {
   return entry
 }
 
-/** Paths the harness reads itself: protecting them would make the harness break itself. */
-const selfPaths = () => {
-  const out = [process.cwd(), pluginDir]
+/**
+ * Make a mask stub removable. A stub that was turned into a symlink is removed rather
+ * than chmodded: `chmod` follows the link and would change the mode of its target.
+ *
+ * @param path - the stub path to release.
+ */
+const releaseStub = (path) => {
+  try {
+    const info = lstatSync(path)
+    if (info.isSymbolicLink()) rmSync(path, { force: true })
+    else chmodSync(path, 0o755)
+  } catch {}
+}
+
+/**
+ * A protected entry is a single path name, matched against every level of every writable
+ * root: separators, traversal and whitespace padding would turn it into something the name
+ * comparison can never reach.
+ */
+const isSegmentName = (value) =>
+  typeof value === 'string' && value !== '' && value === value.trim() && !value.includes('/') && !value.includes('\\') && value !== '.' && value !== '..' && !value.startsWith('~')
+
+/**
+ * The files of the harness itself: its own package and this plugin's folder. Two things
+ * follow from them. A rule may not cover them (the harness would stop being able to read
+ * its own code and state), and a rule may not lie inside them either — the mask stubs live
+ * in the plugin folder, and a writable stub is no stub at all.
+ */
+const harnessPaths = () => {
+  const out = [pluginDir]
   try {
     const packageDir = dirname(fileURLToPath(import.meta.resolve('@deepseek-ai/cordis/package.json')))
     out.push(dirname(dirname(dirname(packageDir))))
   } catch {}
   return out.map(canonical).filter((path) => isAbsolute(path))
 }
+
+/**
+ * Where this process works. A read rule may not cover it: the mask would have to be
+ * skipped for the session to keep a working directory. Rules inside it are ordinary — that
+ * is where the secrets of a project live.
+ */
+const workingPaths = () => [canonical(process.cwd())].filter((path) => isAbsolute(path))
 
 export default class BetterSandbox extends Service {
   // needed to check paths (the session boundary) when rules are edited from the UI
@@ -71,7 +105,19 @@ export default class BetterSandbox extends Service {
     announceInPrompt: z.boolean().default(true),
     denySegments: z.array(z.string()).default(['.git']).volatile(),
     denyDepth: z.natural().default(3),
+    /**
+     * How long a protected-name scan stays valid. 0 re-walks every root for every command:
+     * a directory created moments ago is then protected by the very next command, at the
+     * cost of a synchronous walk each time.
+     */
     denyScanTtlMs: z.natural().default(10_000),
+    /**
+     * Extra places to look for the protected names, beyond the working root and the write
+     * grants. The walk is bounded by `denyDepth`, so a repository nested deeper than that
+     * under the working root stays unprotected inside commands; pointing the scan at it
+     * costs one bounded walk instead of raising the depth for every root.
+     */
+    denyScanRoots: z.array(z.string()).default([]).volatile(),
     denySkipDirs: z.array(z.string()).default([
       'node_modules',
       '.git',
@@ -93,21 +139,66 @@ export default class BetterSandbox extends Service {
     segmentLevel: z.string().default('write-segment').volatile(),
     /** When the mode-000 mask could not be created: hide the directory behind a tmpfs, or leave it unmasked. */
     maskFallback: z.union(['tmpfs', 'skip']).default('tmpfs'),
-    /** Append "permission denied" to the runner's denial signatures, so a read refusal shows up as a policy denial. */
-    readDenialSignature: z.boolean().default(true),
+    /**
+     * How a masked read is recognized in the output of a command: `paths` reports a refusal
+     * only when the output names a protected path, `any` also accepts the bare wording
+     * "permission denied", `off` reports nothing. The wording is what the kernel produces, so
+     * `any` cannot tell a masked read from any other permission error.
+     */
+    readDenialSignature: z.union(['paths', 'any', 'off']).default('paths'),
   })
 
   /** Effective lists are exposed through getters only — a declared field would shadow the getter. */
 
-  /** @type {Map<string, {at: number, paths: string[]}>} cache of the per-root scan */
+  /** @type {Map<string, {at: number, paths: string[], truncated: string[]}>} cache of the per-root scan */
   protectedCache = new Map()
+
+  /**
+   * Why a rule is not in force, keyed by cause: `hole` marks the cases where a protection
+   * the user configured is absent, as opposed to a rule that simply did not install.
+   *
+   * A rule that silently stopped being enforced is worse than no rule: the user believes the
+   * boundary holds and the agent meets nothing. Every reason is kept so the settings page can
+   * show it, and a hole is also announced in the model context. Reasons are cleared as soon
+   * as a confinement proves the protection applies again.
+   *
+   * @type {Map<string, {key: string, message: string, hole: boolean}>}
+   */
+  guardGaps = new Map()
+
+  /** A configured protection is not being applied: the model has to know before relying on it. */
+  noteHole(key, message) {
+    this.guardGaps.set(key, { key, message, hole: true })
+  }
+
+  /** A rule could not be installed as configured: worth showing the user, not announcing to the model. */
+  noteIssue(key, message) {
+    this.guardGaps.set(key, { key, message, hole: false })
+  }
+
+  clearGap(key) {
+    this.guardGaps.delete(key)
+  }
+
+  /** The active reasons, phrased for the model: holes only. */
+  get gaps() {
+    return [...this.guardGaps.values()].filter((row) => row.hole).map((row) => row.message.replace(/^better-sandbox: /, ''))
+  }
+
+  /** Every active reason, for the settings page. */
+  get notices() {
+    return [...this.guardGaps.values()].map((row) => ({ key: row.key, message: row.message.replace(/^better-sandbox: /, ''), hole: row.hole }))
+  }
 
   mask = { available: false, dir: void 0, file: void 0 }
 
   config
 
   /** Effective lists; re-read on access (see syncLists). */
-  lists = { roots: [], denySegments: [], readDirs: [], readFiles: [] }
+  lists = { roots: [], denySegments: [], readDirs: [], readFiles: [], scanRoots: [] }
+
+  /** Where the bounded walk stopped on the last scan (a sample and an exact count). */
+  scanTruncated = { count: 0, paths: [] }
 
   listsKey = null
 
@@ -116,7 +207,8 @@ export default class BetterSandbox extends Service {
   constructor(ctx, config) {
     super(ctx, 'betterSandbox')
     this.config = config
-    this.selfPaths = selfPaths()
+    this.harnessPaths = harnessPaths()
+    this.workingPaths = workingPaths()
     this.prepareMask()
 
     // The harness reports updates of volatile fields with the loader/volatile-update event.
@@ -162,6 +254,15 @@ export default class BetterSandbox extends Service {
                   .join(', ')} — reading their contents is refused for tools and denied inside sandboxed commands. Nothing opens them for one call: an escalation cannot cover a read, so ask the user to change the rule when the file is genuinely needed.`,
               )
             }
+            // A rule that silently stopped being enforced is the failure mode a security
+            // feature must never have: the user believes the boundary holds and the agent
+            // meets nothing. The reasons come from the confinement seams.
+            const gaps = this.gaps
+            if (gaps.length > 0) {
+              lines.push(
+                `Sandbox guards are NOT applied here: ${gaps.join('; ')}. The rules above still bind the file tools, but commands run without that part of the protection.`,
+              )
+            }
             return lines.join('\n')
           },
         })
@@ -170,19 +271,20 @@ export default class BetterSandbox extends Service {
 
     // ctx.effect expects a setup that returns a disposer: cleanup runs only on unload.
     ctx.effect(() => () => {
-      if (this.mask.dir !== void 0) try {
-        chmodSync(this.mask.dir, 0o755)
-      } catch {}
+      const root = join(pluginDir, '.mask')
+      for (const stub of [this.mask.dir, this.mask.file, join(root, 'empty-dir'), root]) releaseStub(stub)
       try {
-        rmSync(join(pluginDir, '.mask'), { recursive: true, force: true })
+        rmSync(root, { recursive: true, force: true })
       } catch {}
     }, 'better-sandbox mask')
   }
 
   /**
    * volatile fields (the rule lists) are resolved only after the entry has been
-   * constructed, so the lists are re-read on access and rebuilt only when config or
-   * the state file has changed.
+   * constructed, so the lists are re-read on access and rebuilt only when a resolved list
+   * has changed. The comparison decides: without it every access rebuilt the lists and
+   * dropped the protected-name scan cache, so each command paid the full walk of every
+   * root again — several times per command, once per getter.
    */
   syncLists() {
     const config = this.config
@@ -191,27 +293,35 @@ export default class BetterSandbox extends Service {
       this.resolved(config.denySegments),
       this.resolved(config.readDenyDirs),
       this.resolved(config.readDenyFiles),
+      this.resolved(config.denyScanRoots),
     ])
+    if (key === this.listsKey) return
+    this.listsKey = key
     const rejected = []
     const lists = {
-      roots: this.collectDirs(this.liveList(config.writableDirs), this.selfPaths, 'writableDirs', rejected),
+      roots: this.collectDirs(this.liveList(config.writableDirs), 'writableDirs', rejected, 'write'),
       denySegments: this.liveList(config.denySegments).filter((segment) => {
-        if (typeof segment === 'string' && segment !== '' && !segment.includes('/') && segment !== '.' && segment !== '..' && !segment.startsWith('~')) return true
+        if (isSegmentName(segment)) return true
         this.ctx.logger.warn(`better-sandbox: denySegments: a single path name is required, skipped ${JSON.stringify(segment)}`)
         rejected.push({ field: 'denySegments', entry: segment, reason: 'segment' })
         return false
       }),
-      readDirs: this.collectDirs(this.liveList(config.readDenyDirs), this.selfPaths, 'readDenyDirs', rejected),
-      readFiles: this.collectFiles(this.liveList(config.readDenyFiles), 'readDenyFiles', rejected),
+      readDirs: this.collectDirs(this.liveList(config.readDenyDirs), 'readDenyDirs', rejected, 'read'),
+      readFiles: this.collectFiles(this.liveList(config.readDenyFiles), 'readDenyFiles', rejected, 'read'),
+      scanRoots: this.collectDirs(this.liveList(config.denyScanRoots), 'denyScanRoots', rejected, 'write'),
       rejected,
     }
     this.lists = lists
     this.protectedCache.clear()
 
-    const summary = JSON.stringify([lists.roots, lists.denySegments, lists.readDirs, lists.readFiles])
+    const summary = JSON.stringify([lists.roots, lists.denySegments, lists.readDirs, lists.readFiles, rejected, this.installRisk])
     if (summary !== this.loggedSummary) {
       this.loggedSummary = summary
       this.ctx.logger.info(`better-sandbox: rules: write roots ${JSON.stringify(lists.roots)}, protected names ${JSON.stringify(lists.denySegments)}, closed for reading ${JSON.stringify([...lists.readDirs, ...lists.readFiles])}, mask ${this.mask.available ? 'mode 000' : `fallback ${config.maskFallback}`}`)
+      // The Settings page has no channel to this service, so everything the host decided
+      // about the configured rules has to reach the operator through the log.
+      if (rejected.length > 0) this.ctx.logger.warn(`better-sandbox: ${rejected.length} rule(s) refused: ${rejected.map((row) => `${row.field} ${JSON.stringify(row.entry)} (${row.reason})`).join(', ')}`)
+      if (this.installRisk !== '') this.ctx.logger.warn(`better-sandbox: the plugin folder ${JSON.stringify(this.installRisk)} lies inside a working root, so the mask stubs are writable from there — install the package under a DSH_HOME outside the workspace`)
     }
   }
 
@@ -249,6 +359,12 @@ export default class BetterSandbox extends Service {
   get rejected() {
     this.syncLists()
     return this.lists.rejected
+  }
+
+  /** Extra roots to walk for the protected names (see `denyScanRoots`). */
+  get scanRoots() {
+    this.syncLists()
+    return this.lists.scanRoots
   }
 
   get readFiles() {
@@ -289,7 +405,38 @@ export default class BetterSandbox extends Service {
     this.ctx.logger.warn(message)
   }
 
-  collectDirs(entries, self, field, sink) {
+  /**
+   * Why a rule cannot be applied, or `''` when it can. The boundaries are checked here
+   * rather than in the settings form because the form writes the lists directly, so this
+   * is the only place every rule passes through:
+   *   `root` — one rule would cover every path the session works in;
+   *   `covers-harness` — guarding a path the harness reads its own code and state from
+   *   does not restrict the agent, it breaks the harness;
+   *   `inside-harness` — a rule placed inside a path of the harness makes that path
+   *   writable, and a writable mask stub is no mask at all: the bind follows its source;
+   *   `covers-workspace` (read rules only) — a mask over the working directory has to be
+   *   skipped for the session to keep a working directory, so such a rule protects
+   *   nothing while looking as if it did. A rule *inside* the working directory is the
+   *   normal case: that is where the secrets of a project live.
+   *
+   * @param path - the canonical rule path.
+   * @param kind - `read` or `write`, the family the rule belongs to.
+   */
+  ruleProblem(path, kind) {
+    if (path === sep) return 'root'
+    if (this.harnessPaths.some((own) => isUnder(own, path))) return 'covers-harness'
+    if (this.harnessPaths.some((own) => isUnder(path, own))) return 'inside-harness'
+    if (kind === 'read') {
+      const root = this.ctx.sandboxPolicy.workspaceRoot
+      if (this.workingPaths.some((own) => isUnder(own, path)) || (typeof root === 'string' && isUnder(root, path))) return 'covers-workspace'
+    }
+    return ''
+  }
+
+  /**
+   * @param kind - the family the rules belong to, passed to {@link ruleProblem}.
+   */
+  collectDirs(entries, field, sink, kind) {
     const out = []
     for (const raw of entries) {
       if (typeof raw !== 'string' || raw.trim() === '') continue
@@ -300,11 +447,10 @@ export default class BetterSandbox extends Service {
         continue
       }
       const path = canonical(resolve(entry))
-      // Guarding a root the harness reads its own code and state from does not break the
-      // agent, it breaks the harness itself.
-      if (self.some((own) => path === own || (own.length > path.length && own.startsWith(`${path}/`)))) {
-        this.ctx.logger.warn(`better-sandbox: ${field} ${JSON.stringify(path)} covers a path of the harness itself — skipped`)
-        sink?.push({ field, entry: raw, reason: 'covers-harness' })
+      const problem = this.ruleProblem(path, kind)
+      if (problem !== '') {
+        this.ctx.logger.warn(`better-sandbox: ${field} ${JSON.stringify(path)} is refused (${problem})`)
+        sink?.push({ field, entry: raw, reason: problem, path })
         continue
       }
       if (!existsSync(path)) sink?.push({ field, entry: raw, reason: 'missing', path })
@@ -313,7 +459,7 @@ export default class BetterSandbox extends Service {
     return out
   }
 
-  collectFiles(entries, field, sink) {
+  collectFiles(entries, field, sink, kind) {
     const out = []
     for (const raw of entries) {
       if (typeof raw !== 'string' || raw.trim() === '') continue
@@ -324,6 +470,12 @@ export default class BetterSandbox extends Service {
         continue
       }
       const path = canonical(resolve(entry))
+      const problem = this.ruleProblem(path, kind)
+      if (problem !== '') {
+        this.ctx.logger.warn(`better-sandbox: ${field} ${JSON.stringify(path)} is refused (${problem})`)
+        sink?.push({ field, entry: raw, reason: problem, path })
+        continue
+      }
       if (!existsSync(path)) sink?.push({ field, entry: raw, reason: 'missing', path })
       out.push(path)
     }
@@ -333,17 +485,35 @@ export default class BetterSandbox extends Service {
 
   /** The mode-000 directory and empty file the mask uses to cover protected paths. */
   /**
-   * The mask stubs live in the plugin folder and can disappear at runtime (for example
-   * when the package is reinstalled). They are checked and restored on demand: otherwise
-   * bwrap fails outright with "Can't find source path", and isolation drops for every
-   * command at once.
+   * The stubs live in the plugin folder and can disappear at runtime (for example when
+   * the package is reinstalled). They are checked and rebuilt on demand: otherwise bwrap
+   * fails outright with "Can't find source path", and isolation drops for every command
+   * at once. The check covers the type and the mode and not just the existence — mode 000
+   * alone is no defence, because the owner of a stub can always give themselves write
+   * access back and replace it, so an altered stub has to be noticed.
    */
-  maskUsable() {
-    if (this.mask.dir !== void 0 && this.mask.file !== void 0 && existsSync(this.mask.dir) && existsSync(this.mask.file)) return true
-    this.prepareMask()
-    return this.mask.available === true && existsSync(this.mask.dir) && existsSync(this.mask.file)
+  /** One report per reason: the stubs are checked before every command. */
+  warnOnceMask(reason, message) {
+    if (this.warnedMasks?.has(reason) === true) return
+    this.warnedMasks ??= new Set()
+    if (this.warnedMasks.size >= 16) this.warnedMasks.clear()
+    this.warnedMasks.add(reason)
+    this.ctx.logger.warn(message)
   }
 
+  maskUsable() {
+    const dirProblem = stubProblem(this.mask.dir, 'dir')
+    const fileProblem = stubProblem(this.mask.file, 'file')
+    if (dirProblem === '' && fileProblem === '') return true
+    this.warnOnceMask(
+      `stub-${dirProblem}-${fileProblem}`,
+      `better-sandbox: the mask stubs are not intact (directory: ${dirProblem || 'ok'}, file: ${fileProblem || 'ok'}), rebuilding them — a replaced stub would expose the paths it points at`,
+    )
+    this.prepareMask()
+    return stubProblem(this.mask.dir, 'dir') === '' && stubProblem(this.mask.file, 'file') === ''
+  }
+
+  /** Rebuild the stubs, releasing them first whatever their current shape is. */
   prepareMask() {
     const root = join(pluginDir, '.mask')
     const dir = join(root, 'empty-dir')
@@ -351,12 +521,7 @@ export default class BetterSandbox extends Service {
     try {
       // Leftover from a previous run: the mask directory has mode 000, so it can be
       // neither removed nor worked around — give the permissions back first.
-      for (const stale of [dir, root]) try {
-        chmodSync(stale, 0o755)
-      } catch {}
-      try {
-        chmodSync(join(root, 'empty-file'), 0o755)
-      } catch {}
+      for (const stale of [dir, root, file]) releaseStub(stale)
       rmSync(root, { recursive: true, force: true })
       mkdirSync(dir, { recursive: true, mode: 0o755 })
       writeFileSync(file, '', { mode: 0o644 })
@@ -385,34 +550,56 @@ export default class BetterSandbox extends Service {
       segmentLevel: this.segmentLevel,
       mask: { available: this.mask.available, fallback: this.config.maskFallback },
       rejected: this.lists.rejected,
+      gaps: this.gaps,
+      notices: this.notices,
+      installRisk: this.installRisk,
       editable: true,
-      scan: { depth: this.config.denyDepth, ttlMs: this.config.denyScanTtlMs, skipDirs: [...(this.config.denySkipDirs ?? [])] },
-      reserved: [...this.selfPaths],
+      scan: {
+        depth: this.config.denyDepth,
+        ttlMs: this.config.denyScanTtlMs,
+        skipDirs: [...(this.config.denySkipDirs ?? [])],
+        extraRoots: [...this.scanRoots],
+        truncated: this.scanTruncated,
+      },
+      reserved: [...this.harnessPaths, ...this.workingPaths],
     }
   }
 
-  /** Checks a path before it is added: absolute, not overlapping the harness itself, existing. */
-  validatePath(kind, path) {
+  /**
+   * The plugin folder when the session's working root contains it. The mask stubs live
+   * inside the plugin folder, and a stub the agent can write to is a stub the agent can
+   * replace, so an installation inside a working root has to be visible to the user even
+   * though every command re-verifies the stubs.
+   */
+  get installRisk() {
+    const root = this.ctx.sandboxPolicy.workspaceRoot
+    return typeof root === 'string' && isUnder(pluginDir, root) ? pluginDir : ''
+  }
+
+  /** Checks a rule before it is added, with the same answers {@link collectDirs} gives. */
+  validatePath(kind, value) {
     if (kind === 'segmentLevel') {
       // The token is not a path: an empty value switches the level off, anything else has
       // to be a plain lowercase word that is not a mode of the harness ladder.
-      const token = String(path ?? '').trim()
+      const token = String(value ?? '').trim()
       if (token === '') return { ok: true, path: '', exists: false }
       if (RESERVED_MODES.has(token)) return { ok: false, reason: 'reserved-level', path: token }
       if (!LEVEL_PATTERN.test(token)) return { ok: false, reason: 'level-pattern', path: token }
       return { ok: true, path: token, exists: true }
     }
-    if (typeof path !== 'string' || path.trim() === '') return { ok: false, reason: 'empty' }
-    const entry = expandHome(path.trim())
+    if (kind === 'denySegment') {
+      // A protected entry is a single path name, never a path: the name is matched against
+      // every level of every writable root.
+      const name = typeof value === 'string' ? value : ''
+      if (!isSegmentName(name)) return { ok: false, reason: 'segment', path: name }
+      return { ok: true, path: name, exists: true }
+    }
+    if (typeof value !== 'string' || value.trim() === '') return { ok: false, reason: 'empty' }
+    const entry = expandHome(value.trim())
     if (!isAbsolute(entry)) return { ok: false, reason: 'relative' }
     const canonicalPathValue = canonical(resolve(entry))
-    if (kind === 'readDir') {
-      for (const own of this.selfPaths) {
-        if (canonicalPathValue === own || own.startsWith(`${canonicalPathValue}/`)) return { ok: false, reason: 'covers-harness', path: canonicalPathValue }
-      }
-      const root = this.ctx.sandboxPolicy.workspaceRoot
-      if (typeof root === 'string' && root.startsWith(`${canonicalPathValue}/`)) return { ok: false, reason: 'covers-workspace', path: canonicalPathValue }
-    }
+    const problem = this.ruleProblem(canonicalPathValue, kind === 'readDir' || kind === 'readFile' ? 'read' : 'write')
+    if (problem !== '') return { ok: false, reason: problem, path: canonicalPathValue }
     return { ok: true, path: canonicalPathValue, exists: existsSync(canonicalPathValue) }
   }
 
@@ -442,21 +629,30 @@ export default class BetterSandbox extends Service {
     return void 0
   }
 
-  /** Write-protected paths that exist under the listed roots (cached scan). */
+  /** Write-protected paths that exist under the scanned roots (cached scan). */
   protectedUnder(roots) {
     const found = new Set()
-    for (const root of roots) {
-      for (const path of findProtectedUnder(
+    const truncated = []
+    let truncatedCount = 0
+    // Where the walk stopped is reported for the roots a user thinks of as their own tree.
+    // A write grant is a cache or a toolchain: it always contains thousands of directories,
+    // and a report from there is noise that hides the one that matters.
+    const grants = new Set(this.roots)
+    for (const root of [...roots, ...this.scanRoots]) {
+      const scan = findProtectedUnder(
         root,
         this.denySegments,
         this.config.denyDepth ?? 3,
         this.config.denySkipDirs ?? [],
         this.config.denyScanTtlMs ?? 10_000,
         this.protectedCache,
-      )) {
-        found.add(path)
-      }
+      )
+      for (const path of scan.paths) found.add(path)
+      if (grants.has(root)) continue
+      truncatedCount += scan.truncatedCount
+      for (const path of scan.truncated) if (truncated.length < TRUNCATED_REPORT_LIMIT) truncated.push(path)
     }
+    this.scanTruncated = { count: truncatedCount, paths: truncated }
     return [...found]
   }
 }

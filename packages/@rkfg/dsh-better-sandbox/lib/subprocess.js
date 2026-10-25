@@ -35,11 +35,29 @@ export default class GuardedSubprocessRuntime extends LocalSubprocessRuntime {
     this.ctx.logger.warn(message)
   }
 
+  /** Same contract as in `runner.js`: a skipped guard is logged once and stays visible. */
+  get report() {
+    return {
+      warn: (key, message) => {
+        this.ctx.betterSandbox.noteHole(key, message)
+        this.warnOnce(key, message)
+      },
+      issue: (key, message) => {
+        this.ctx.betterSandbox.noteIssue(key, message)
+        this.warnOnce(key, message)
+      },
+      clear: (key) => this.ctx.betterSandbox.clearGap(key),
+    }
+  }
+
   /** A functional check done once: without bwrap a wrapped spawn would fail outright. */
   bwrapAvailable() {
     if (this.bwrapUsable === void 0) {
       this.bwrapUsable = spawnSync('bwrap', ['--version'], { stdio: 'ignore' }).status === 0
-      if (!this.bwrapUsable) this.warnOnce('no-bwrap', 'better-sandbox: bwrap is unavailable, ripgrep runs without confinement — read protection for grep/glob does not work')
+      if (!this.bwrapUsable) this.report.warn(
+        'no-bwrap',
+        'better-sandbox: bwrap is unavailable, so ripgrep runs unconfined and grep/glob read the paths that are closed to the other tools',
+      )
     }
     return this.bwrapUsable
   }
@@ -47,12 +65,16 @@ export default class GuardedSubprocessRuntime extends LocalSubprocessRuntime {
   spawn(spec) {
     const allow = this.ctx.betterSandbox
     const guarded = allow.readDirs.length > 0 || allow.readFiles.length > 0 || allow.denySegments.length > 0 || allow.roots.length > 0
-    if (!guarded || !isRipgrep(spec.argv[0]) || !this.bwrapAvailable()) return super.spawn(spec)
-    const policy = { mode: 'read-only', workspaceRoot: spec.cwd }
-    const confined = [spec.cwd, ...allow.roots]
-    const args = [...bwrapBaseArgs(policy.mode), ...bwrapGuardArgs(allow, policy, confined, (key, message) => this.warnOnce(key, message), false)]
+    if (!guarded || !isRipgrep(spec.argv[0])) return super.spawn(spec)
+    if (!this.bwrapAvailable()) return super.spawn(spec)
+    // The seam gives a spawn no working directory contract: without one the confinement
+    // would be built around the harness process instead of around where the search runs.
+    const cwd = spec.cwd ?? process.cwd()
+    const policy = { mode: 'read-only', workspaceRoot: cwd }
+    const confined = [cwd, ...allow.roots]
+    const args = [...bwrapBaseArgs(policy.mode), ...bwrapGuardArgs(allow, policy, confined, this.report, false)]
     if (args.length === bwrapBaseArgs(policy.mode).length) return super.spawn(spec)
-    this.ctx.logger.debug?.(`better-sandbox: ripgrep under confinement: ${basename(spec.argv[0])} in ${spec.cwd}`)
+    this.ctx.logger.debug?.(`better-sandbox: ripgrep under confinement: ${basename(spec.argv[0])} in ${cwd}`)
     return super.spawn({ ...spec, argv: ['bwrap', ...args, '--', ...spec.argv] })
   }
 }

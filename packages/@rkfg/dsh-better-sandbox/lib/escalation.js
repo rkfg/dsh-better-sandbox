@@ -47,8 +47,14 @@ const SUBJECTS = {
  * The modes the level is strictly wider than: it grants what they grant plus the
  * protected names. `danger-full-access` has no row at all — nothing is wider than it,
  * and a session already running under it is not being refused anything.
+ *
+ * `read-only` is deliberately absent. The level is implemented as the caller's mode with
+ * the name protection lifted, and under `read-only` every mutation is refused by the mode
+ * itself, so the level could only ever be handed out as `workspace-write` — a grant much
+ * wider than the card says. A read-only session asks for `workspace-write`, which is what
+ * it actually needs.
  */
-const REACHABLE_FROM = ['read-only', 'workspace-write']
+const REACHABLE_FROM = ['workspace-write']
 
 export default class BetterSandboxEscalation extends Service {
   static inject = ['betterSandbox', 'tools']

@@ -18,7 +18,7 @@
  */
 import LocalSandboxProvider from '@deepseek-ai/dsh-sandbox-local'
 import { basename } from 'node:path'
-import { bwrapGuardArgs } from './masks.js'
+import { bwrapGuardArgs, readMaskSignatures } from './masks.js'
 
 const detectRunner = (argv) => {
   const program = argv[0] ?? ''
@@ -38,6 +38,7 @@ export default class BetterSandboxProvider extends LocalSandboxProvider {
     return this.ctx.betterSandbox
   }
 
+  /** One log line per reason; the reason itself stays recorded until it is cleared. */
   warnOnce(key, message) {
     if (this.warned.has(key)) return
     // The set grows with the number of distinct paths, so it is capped:
@@ -45,6 +46,25 @@ export default class BetterSandboxProvider extends LocalSandboxProvider {
     if (this.warned.size >= WARNED_LIMIT) this.warned.clear()
     this.warned.add(key)
     this.ctx.logger.warn(message)
+  }
+
+  /**
+   * Why a guard was skipped is logged once and kept on the service, where the model is told
+   * about it and the settings page shows it. `clear` matters as much as `warn`: a reason that
+   * stopped applying must stop warning.
+   */
+  get report() {
+    return {
+      warn: (key, message) => {
+        this.allow.noteHole(key, message)
+        this.warnOnce(key, message)
+      },
+      issue: (key, message) => {
+        this.allow.noteIssue(key, message)
+        this.warnOnce(key, message)
+      },
+      clear: (key) => this.allow.clearGap(key),
+    }
   }
 
   async confine(argv, policy, signal) {
@@ -58,25 +78,30 @@ export default class BetterSandboxProvider extends LocalSandboxProvider {
     const guarded = allow.roots.length > 0 || allow.denySegments.length > 0 || allow.readDirs.length > 0 || allow.readFiles.length > 0
     if (!guarded) return base
     const separator = base.argv.indexOf('--')
-    if (separator === -1) return base
-    const runner = detectRunner(base.argv)
-    if (runner === 'unknown') {
-      this.warnOnce(`unknown-${base.argv[0]}`, `better-sandbox: runner ${JSON.stringify(base.argv[0])} gets neither grants nor protection`)
+    if (separator === -1) {
+      this.report.warn('no-separator', 'better-sandbox: the confinement argv carries no "--" separator, so neither the grants nor the read masks were inserted')
       return base
     }
-    if (runner === 'landlock' && (allow.readDirs.length > 0 || allow.readFiles.length > 0 || allow.denySegments.length > 0)) {
-      this.warnOnce(
-        'landlock-guards',
-        'better-sandbox: landlock cannot subtract write access or deny reading a subpath — denySegments and readDeny are not applied for it',
-      )
+    this.allow.clearGap('no-separator')
+    const runner = detectRunner(base.argv)
+    if (runner === 'unknown') {
+      this.report.warn('unknown-runner', `better-sandbox: the runner ${JSON.stringify(base.argv[0])} is not recognized, so commands get neither the extra write roots nor the read masks`)
+      return base
     }
+    this.allow.clearGap('unknown-runner')
+    if (runner === 'landlock' && (allow.readDirs.length > 0 || allow.readFiles.length > 0 || allow.denySegments.length > 0)) {
+      this.report.warn(
+        'landlock-guards',
+        'better-sandbox: the landlock runner cannot subtract write access or deny reading a subpath, so denySegments and readDeny do not apply to commands',
+      )
+    } else this.allow.clearGap('landlock-guards')
     const result = runner === 'bwrap'
       ? (() => {
           const extra = bwrapGuardArgs(
             allow,
             effective,
             [effective.workspaceRoot, ...allow.roots],
-            (key, message) => this.warnOnce(key, message),
+            this.report,
             effective.mode === 'workspace-write',
             escalated,
           )
@@ -89,9 +114,11 @@ export default class BetterSandboxProvider extends LocalSandboxProvider {
     // A read refusal coming from the mask is EACCES ("permission denied"), while the base
     // bwrap signatures only know "read-only file system". Without the addition the bash
     // tool would show an ordinary error instead of a policy denial with an escalation
-    // hint.
-    if (runner === 'bwrap' && allow.config.readDenialSignature && (allow.readDirs.length > 0 || allow.readFiles.length > 0)) {
-      return { ...result, denialSignatures: [...result.denialSignatures, 'permission denied'] }
+    // hint. Which extra strings that is stays a configuration question: see
+    // `readMaskSignatures`.
+    if (runner === 'bwrap') {
+      const extra = readMaskSignatures(allow)
+      if (extra.length > 0) return { ...result, denialSignatures: [...result.denialSignatures, ...extra] }
     }
     return result
   }

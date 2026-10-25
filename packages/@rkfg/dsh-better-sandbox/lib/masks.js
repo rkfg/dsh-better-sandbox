@@ -16,6 +16,7 @@
  * @module dsh-better-sandbox/masks
  */
 import { existsSync } from 'node:fs'
+import { isUnder } from './policy.js'
 
 export const bwrapBaseArgs = (mode) => {
   const args = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-pid', '--proc', '/proc', '--die-with-parent']
@@ -28,21 +29,25 @@ export const bwrapBaseArgs = (mode) => {
  * @param allow - the betterSandbox service.
  * @param policy - the policy allowed for this run.
  * @param confined - roots that must not be covered by a mask (the session cwd and the grants).
- * @param warn - warning callback (the caller emits one call per reason).
+ * @param report - `{ warn(key, message), issue(key, message), clear(key) }`: the caller logs
+ *   a reason once, and the reason stays recorded until a later confinement proves the
+ *   protection applies again, so a temporary problem cannot leave a permanent warning behind.
+ *   `warn` is a configured protection that is missing; `issue` is a rule that did not install.
  * @param applyWriteGuards - whether to apply grants and read-only returns (only
  *   `workspace-write`); read masks apply under any confinement.
  * @param exemptProtected - skip the read-only returns for the protected path names, which
- *   is what the `write-segment` escalation level means: the names inherit the write access
- *   of the root they live in, and nothing else changes.
+ *   is what the escalation level means: the names inherit the write access of the root they
+ *   live in, and nothing else changes.
  */
-export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards, exemptProtected = false) {
+export function bwrapGuardArgs(allow, policy, confined, report, applyWriteGuards, exemptProtected = false) {
   const args = []
   if (applyWriteGuards) {
     for (const root of allow.roots) {
       if (!existsSync(root)) {
-        warn(`missing-${root}`, `better-sandbox: root ${JSON.stringify(root)} does not exist, grant skipped`)
+        report.issue(`missing-${root}`, `better-sandbox: root ${JSON.stringify(root)} does not exist, grant skipped`)
         continue
       }
+      report.clear(`missing-${root}`)
       args.push('--bind', root, root)
     }
     if (!exemptProtected) {
@@ -56,18 +61,26 @@ export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards, 
   }
   for (const dir of allow.readDirs) {
     if (!existsSync(dir)) continue
-    if (confined.some((root) => dir === root || root.startsWith(`${dir}/`))) {
-      warn(`swallow-${dir}`, `better-sandbox: a read mask on ${JSON.stringify(dir)} would cover the working directory — skipped`)
+    if (confined.some((root) => isUnder(root, dir))) {
+      report.warn(
+        `swallow-${dir}`,
+        `better-sandbox: a read mask on ${JSON.stringify(dir)} would cover the working directory, so it is skipped — the rule protects nothing while looking as if it did`,
+      )
       continue
     }
-    if (allow.maskUsable()) args.push('--ro-bind', allow.mask.dir, dir)
-    else if (allow.config.maskFallback !== 'skip') args.push('--tmpfs', dir)
-    else warn(`nomask-${dir}`, `better-sandbox: read mask for ${JSON.stringify(dir)} not applied (no stub)`)
+    report.clear(`swallow-${dir}`)
+    if (allow.maskUsable()) {
+      report.clear(`nomask-${dir}`)
+      args.push('--ro-bind', allow.mask.dir, dir)
+    } else if (allow.config.maskFallback !== 'skip') args.push('--tmpfs', dir)
+    else report.warn(`nomask-${dir}`, `better-sandbox: no mask stub for ${JSON.stringify(dir)} and the fallback is "skip", so its contents stay readable to commands`)
   }
   for (const file of allow.readFiles) {
     if (!existsSync(file)) continue
-    if (allow.maskUsable()) args.push('--ro-bind', allow.mask.file, file)
-    else warn(`maskfile-${file}`, `better-sandbox: read mask for file ${JSON.stringify(file)} not applied (no stub)`)
+    if (allow.maskUsable()) {
+      report.clear(`maskfile-${file}`)
+      args.push('--ro-bind', allow.mask.file, file)
+    } else report.warn(`maskfile-${file}`, `better-sandbox: no mask stub for the file ${JSON.stringify(file)}, so it stays readable to commands`)
   }
   return args
 }
@@ -76,4 +89,27 @@ export function bwrapGuardArgs(allow, policy, confined, warn, applyWriteGuards, 
 export const isRipgrep = (program) => {
   if (typeof program !== 'string') return false
   return /(^|[\\/])rg(\.exe)?$/u.test(program) || program.includes('@vscode/ripgrep')
+}
+
+/**
+ * The extra strings that make a masked read recognizable as a policy refusal.
+ *
+ * A mask produces `EACCES`, which the base bwrap dialect ("read-only file system", the
+ * `EROFS` of the base read-only bind) does not cover; without an addition the model sees an
+ * unexplained command failure instead of a refusal with the rule behind it. The consumer
+ * matches these as case-insensitive substrings of stderr, and a kernel `EACCES` carries no
+ * marker of its own, so `paths` contributes the protected paths themselves: only a failure
+ * that names a protected path is reported as a policy refusal, while an unrelated permission
+ * error stays an ordinary one. `any` also matches the bare wording, which catches every
+ * masked read — including the ones whose message names no path — at the cost of reporting
+ * unrelated permission errors as policy denials.
+ *
+ * @param allow - the betterSandbox service.
+ * @returns the signatures to append, possibly empty.
+ */
+export const readMaskSignatures = (allow) => {
+  const mode = allow.readDenialSignature
+  if (mode === 'off') return []
+  if (mode === 'any') return ['permission denied']
+  return [...allow.readDirs, ...allow.readFiles]
 }

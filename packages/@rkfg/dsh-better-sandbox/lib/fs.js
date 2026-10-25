@@ -50,7 +50,7 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
     // to escalate one sends it into a schema error instead of a decision.
     throw new FsError(
       [
-        sandboxDenialMarker('workspace-write'),
+        sandboxDenialMarker(this.ctx.sandboxPolicy.resolve().mode),
         `[better-sandbox: "${protectedBy}" is protected from reading by the better-sandbox policy; no escalation opens a read, the user has to change the rule]`,
         `cannot ${operation} "${displayPath}"`,
       ].join('\n'),
@@ -103,6 +103,17 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
   async listDir(target, signal) {
     if (this.readGuarded) this.denyRead(target.displayPath, target.targetKey, 'list', false)
     return super.listDir(target, signal)
+  }
+
+  /**
+   * A watcher reports that something changed inside a path, and that report is itself a read
+   * of the path: the names and the moments of what lives under a protected directory. The
+   * inherited implementation reaches the target through `stat`, which keeps the contents
+   * closed, so what is closed here is the watch over the protected directory itself.
+   */
+  async watch(target, changed, signal) {
+    if (this.readGuarded) this.denyRead(target.displayPath, target.targetKey, 'watch', false)
+    return super.watch(target, changed, signal)
   }
 
   async readText(target, signal) {

@@ -16,6 +16,14 @@ ui="$root/packages/@rkfg/dsh-better-sandbox-ui"
 
 command -v dsh >/dev/null || { echo "the harness CLI is required: npm install --global @deepseek-ai/dsh" >&2; exit 1; }
 command -v bwrap >/dev/null || { echo "bubblewrap (bwrap) is required for the confinement checks" >&2; exit 1; }
+# Installed is not the same as usable: the contour asserts the mounts bwrap makes, and a
+# host that refuses an unprivileged user namespace runs the commands under landlock, where
+# read masks and protected names cannot apply. One clear refusal beats a wall of missing
+# expectations — and the plugin reports that host as a guard gap, exactly as designed.
+if ! bwrap --dev-bind / / true 2>/dev/null; then
+  echo "bwrap cannot create a user namespace here, so the confinement checks cannot run on this host" >&2
+  exit 1
+fi
 
 echo "### syntax"
 bash "$root/scripts/lint.sh" && echo "ok"
@@ -348,7 +356,7 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
           # hostile on purpose: a mask over the working directory protects nothing
           - $DSH_HOME/run
         denyScanRoots:
-          # the repository under `run/deep` sits below denyDepth; naming it here is what
+          # the repository under run/deep sits below denyDepth; naming it here is what
           # brings it back under protection without raising the depth for every root
           - $DSH_HOME/run/deep
         denySegments:

@@ -31,6 +31,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap
           bwrap --version
+          # The contour gates the release, and it asserts the mounts bwrap makes; Ubuntu
+          # 24.04 keeps unprivileged user namespaces behind AppArmor without which bwrap
+          # cannot make them.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --dev-bind / / true
 
       - name: Install the harness CLI
         run: npm install --global @deepseek-ai/dsh@${{ env.HARNESS_VERSION }}

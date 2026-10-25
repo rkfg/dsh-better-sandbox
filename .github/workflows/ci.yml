@@ -22,6 +22,11 @@ jobs:
           sudo apt-get install -y bubblewrap
           bwrap --version
           sysctl kernel.unprivileged_userns_clone || true
+          # Ubuntu 24.04 keeps unprivileged user namespaces behind AppArmor. Without one
+          # bwrap cannot make the mounts the contour asserts, the provider falls back to
+          # landlock, and the read masks and protected names cannot apply at all.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --dev-bind / / true
 
       - name: Install the harness CLI
         run: npm install --global @deepseek-ai/dsh@${HARNESS_VERSION}

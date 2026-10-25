@@ -16,7 +16,7 @@ Everything is enforced at the harness seams, not by wrapping the agent: the file
 |---|---|---|
 | Filesystem fence | subclass of the harness `fs-sandbox` provider; checks `stat`, `lstat`, `listDir`, `readText`, `streamText`, `readBytes`, `readByteRange`, `watch` and every write | tools `read`, `write`, `edit` and anything else going through `ctx.fs` |
 | Process confinement | subclass of the harness `sandbox-local` provider; inserts extra `bwrap` binds after the workspace bind | every `bash`/`pwsh`/terminal command the harness confines |
-| Read masks | bind of a mode-000 empty directory/file over a protected path → `EACCES` | reads inside sandboxed commands; the stubs are verified (type and mode) and rebuilt before every command |
+| Read masks | bind of a mode-000 empty directory/file over a protected path → `EACCES` | reads inside sandboxed commands; the stubs are verified (type and mode) and rebuilt before every command, and an unload removes them only after the commands it already accepted are confined |
 | Search fence | wrapper around the harness ripgrep spawn, applying the same `bwrap` arguments | `glob`/`grep`, which run ripgrep through `ctx.subprocess` and never through `ctx.fs` |
 | Guard reporting | every reason a grant or a mask was not applied is kept and announced in the model context, written to the host log, and returned by `sandboxGuard.state()` | a rule that silently stopped working, which is the failure mode this plugin must not have |
 | Model context | an announcement block listing the grants and the protected paths | the model knows what is allowed before it tries |
@@ -45,7 +45,7 @@ the target from the ladder entirely.
 A read cannot be escalated: no tool advertises `sandbox_permissions` for `read`, `glob` or
 `grep`, so opening a read-protected path means changing the rule.
 
-Protected reads fail closed: the mask is a real mount point with mode `000`, and the plugin re-creates it before each command if something removed it.
+Protected reads fail closed: the mask is a real mount point with mode `000`, and the plugin re-creates it before each command if something removed it. A command whose confinement is still being built holds the mask, so restarting or disabling the row during a running command keeps that command masked and removes the stubs once it is confined; a command that arrives after the row started closing gets the documented fallback (a tmpfs over a directory, a reported hole for a file) and never leaves a new pair of stubs behind.
 
 ## Requirements
 
@@ -124,7 +124,7 @@ Paths accept `~` and `~/…`; `~user` does not expand. A rule that crosses a bou
 ./scripts/webfull.sh   # isolated full web profile: bundle form, Settings page, live rule edit
 ```
 
-`check.sh` builds throwaway profiles under `.dsh-test/`, points `DSH_HOME` there and runs a deterministic driver: writes into an allowed directory must report `WROTE`, writes into a denied directory and into `.git` must report `DENIED FS_SANDBOX_DENIED` or `Read-only file system`, reads of the fixture secrets must be refused, and deleting the mask stubs mid-run must be repaired. Before that it checks syntax, the manifests against the patch layers, the YAML of both patch layers and the language rule above. `webfull.sh` boots the real web stack on its own port and reports activation problems; the expected count is zero.
+`check.sh` builds throwaway profiles under `.dsh-test/`, points `DSH_HOME` there and runs a deterministic driver: writes into an allowed directory must report `WROTE`, writes into a denied directory and into `.git` must report `DENIED FS_SANDBOX_DENIED` or `Read-only file system`, reads of the fixture secrets must be refused, and deleting the mask stubs mid-run must be repaired. A third profile runs the lifecycle probe, which unloads the rule owner while a confinement is being built: the command must stay masked, the stubs must be gone once the unload settles, and a late reader must rebuild nothing. Before that it checks syntax, the manifests against the patch layers, the YAML of both patch layers and the language rule above. `webfull.sh` boots the real web stack on its own port and reports activation problems; the expected count is zero.
 
 ## Boundaries
 
@@ -135,6 +135,7 @@ Read them before trusting the setup — the plugin narrows what an agent can rea
 - bwrap applies protected names up to `denyDepth` levels and does not descend into `denySkipDirs`; the filesystem fence checks them at any depth. A repository deeper than that is unwritable for the file tools yet unprotected inside a command — the scan reports where it stopped, and `denyScanRoots` names the trees that must be scanned anyway.
 - A protected name created moments ago becomes protected for commands after `denyScanTtlMs`; `0` re-walks the roots for every command instead of paying that window.
 - The mask stubs are verified (type and mode) and rebuilt before every command, because a bind follows a symlinked source and a replaced stub would show whatever it points at. Mode 000 alone is no defence: the owner of a stub can always take write access back. That is why the plugin folder must not be inside a working directory — the host log says when it is.
+- A command admitted after the rule owner started closing is confined with the fallback rather than with a stub: a tmpfs over a read-protected directory still denies reading, while a read-protected file is reported as a hole. The stronger mask covers the commands accepted while the owner was mounted.
 - A read rule closes reading, not writing: a read-protected path that is also writable can be overwritten without being read.
 - Landlock cannot subtract a write from a broader rule or deny a subpath read, so `denySegments` and `readDeny*` are skipped there — the reason is logged, shown on the Settings page and announced in the model context rather than hidden.
 - Names of protected directories stay visible in a parent listing: the mask replaces the mount point, it does not filter the parent.

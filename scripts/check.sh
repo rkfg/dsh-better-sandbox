@@ -295,14 +295,16 @@ make_profile() {
 
 make_profile basetest '@deepseek-ai/dsh-base' '@deepseek-ai/dsh-headless'
 make_profile allowtest '@deepseek-ai/dsh-base' '@deepseek-ai/dsh-headless'
+make_profile lifetest '@deepseek-ai/dsh-base' '@deepseek-ai/dsh-headless'
 
 # The plugin modules are copied into the profile folder: this contour checks the provider
 # entries, while scripts/webfull.sh checks the bundle form.
-for prof in basetest allowtest; do
+for prof in basetest allowtest lifetest; do
   mkdir -p "$profiles/$prof/better-sandbox"
   printf '{"type":"module"}\n' > "$profiles/$prof/better-sandbox/package.json"
   cp -f "$src"/*.js "$profiles/$prof/better-sandbox/"
   cp -f "$root/test/driver.js" "$profiles/$prof/better-sandbox/"
+  cp -f "$root/test/lifecycle-probe.js" "$profiles/$prof/better-sandbox/"
 done
 
 # basetest: the same driver against the harness' built-in providers — no plugin entries.
@@ -366,6 +368,15 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
       name: ./better-sandbox/driver.js
 PATCH
 
+# lifetest: the mask owner against a confinement that was accepted while the row is being
+# unloaded. The probe drives the real entries inside a private cordis context, so this
+# profile mounts no plugin rows of its own and races nothing but itself.
+cat > "$profiles/lifetest/cordis.patch.yml" <<PATCH
+- insert:
+    - id: better-sandbox-lifecycle
+      name: ./better-sandbox/lifecycle-probe.js
+PATCH
+
 run_profile() {
   local name=$1
   # The driver declares the plugin services as dependencies only in the profile that has
@@ -382,14 +393,18 @@ echo
 echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git; the (level) cases expect WROTE in .git and DENIED outside the workspace)"
 run_profile allowtest 1 | tee "$DSH_HOME/allowtest.txt"
 
+echo
+echo "### lifetest: unloading the rule owner against an accepted confinement"
+run_profile lifetest | tee "$DSH_HOME/lifecycle.txt"
+
 # The dump above is for the eye; the list below is what makes the contour red or green.
 # Every expectation is a line the driver has to print, so a silent regression in a provider
 # cannot pass by nobody noticing the output changed.
 echo
 echo "### expectations"
-python3 - "$DSH_HOME/allowtest.txt" <<'EXPECT'
+python3 - "$DSH_HOME/allowtest.txt" "$DSH_HOME/lifecycle.txt" <<'EXPECT'
 import pathlib, sys
-text = pathlib.Path(sys.argv[1]).read_text()
+text = '\n'.join(pathlib.Path(path).read_text() for path in sys.argv[1:3])
 must = [
     'fs write inside-cwd: WROTE',
     'fs write .git: DENIED FS_SANDBOX_DENIED',
@@ -420,6 +435,13 @@ must = [
     'deep repository bound (denyScanRoots names it): true',
     'install risk (plugin inside the working root): ""',
     'rules from config are visible right away: true',
+    # the mask owner outlives the confinement it accepted, and nothing rebuilds the
+    # stubs after its disposer ran
+    'plain unload: stubs before=yes, after=gone',
+    'confine accepted during unload: confine=ok, secret masked by the stub=yes, stubs after disposal=gone',
+    'unload waits for an admitted confinement: stubs while held=kept, after release=gone',
+    'after unload: maskUsable=false, stubs recreated=no',
+    'lifecycle: OK',
 ]
 must_in_one_line = [
     ['refused by the lists:', 'writableDirs:root'],
@@ -427,7 +449,7 @@ must_in_one_line = [
     ['refused by the lists:', 'readDenyDirs:covers-workspace'],
     ['validate of "/":', '"root"'],
 ]
-forbidden = ['command through the replaced stub: exit=0', 'leaked=true', 'fs watch on secret dir: WATCH ALLOWED']
+forbidden = ['command through the replaced stub: exit=0', 'leaked=true', 'fs watch on secret dir: WATCH ALLOWED', 'lifecycle: FAILED', 'stubs after disposal=LEFT', 'stubs recreated=yes', 'gone too early', 'secret masked by the stub=no']
 problems = [f'missing: {line}' for line in must if line not in text]
 problems += [f'missing pair {pair} on one line' for pair in must_in_one_line if not any(all(part in line for part in pair) for line in text.splitlines())]
 problems += [f'present but must not be: {line}' for line in forbidden if line in text]

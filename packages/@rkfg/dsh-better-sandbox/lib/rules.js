@@ -192,6 +192,18 @@ export default class BetterSandbox extends Service {
 
   mask = { available: false, dir: void 0, file: void 0 }
 
+  /**
+   * Whether this instance still admits confinements. Teardown closes the gate and a
+   * closed gate never reopens: the mask stubs of a disposed owner stay removed.
+   */
+  admitting = true
+
+  /** Confinements admitted before the gate closed; the mask is released only after they are built. */
+  leases = new Set()
+
+  /** Set once the mask disposer has run: the stubs are never written again by this instance. */
+  disposed = false
+
   config
 
   /** Effective lists; re-read on access (see syncLists). */
@@ -270,13 +282,51 @@ export default class BetterSandbox extends Service {
     }
 
     // ctx.effect expects a setup that returns a disposer: cleanup runs only on unload.
-    ctx.effect(() => () => {
+    // The stubs are the resource the confinement seams of the sibling entries read while
+    // they finish the commands they already accepted, so the gate closes first, the
+    // accepted commands are awaited, and only then do the files go.
+    ctx.effect(() => async () => {
+      await this.closeAdmission()
+      this.disposed = true
       const root = join(pluginDir, '.mask')
       for (const stub of [this.mask.dir, this.mask.file, join(root, 'empty-dir'), root]) releaseStub(stub)
       try {
         rmSync(root, { recursive: true, force: true })
       } catch {}
     }, 'better-sandbox mask')
+  }
+
+  /**
+   * Take the owner for the length of one confinement.
+   *
+   * A confinement reads the mask stubs after an `await`, by which time the row holding
+   * this service may already be unloading. The lease keeps the stubs in place for the
+   * commands that were accepted while the owner was alive; once the gate is closed the
+   * caller gets `held: false` and must not expect a mask to be created for it.
+   *
+   * @returns `held` — whether the owner is still mounted; `release` — the exact end of
+   *   the lease, which has to run even when the confinement fails.
+   */
+  lease() {
+    if (!this.admitting) return { held: false, release: () => {} }
+    let settle
+    const settled = new Promise((resolve) => { settle = resolve })
+    this.leases.add(settled)
+    return {
+      held: true,
+      release: () => {
+        if (!this.leases.delete(settled)) return
+        settle()
+      },
+    }
+  }
+
+  /** Close the gate, then wait until every accepted confinement has finished building. */
+  async closeAdmission() {
+    this.admitting = false
+    while (this.leases.size > 0) {
+      await Promise.allSettled([...this.leases])
+    }
   }
 
   /**
@@ -502,6 +552,10 @@ export default class BetterSandbox extends Service {
   }
 
   maskUsable() {
+    // A disposed owner has already run its mask disposer: report the mask as
+    // unavailable and let the caller take its documented fallback rather than
+    // leaving a fresh pair of mode-000 files behind nobody will remove.
+    if (this.disposed) return false
     const dirProblem = stubProblem(this.mask.dir, 'dir')
     const fileProblem = stubProblem(this.mask.file, 'file')
     if (dirProblem === '' && fileProblem === '') return true
@@ -518,6 +572,10 @@ export default class BetterSandbox extends Service {
     const root = join(pluginDir, '.mask')
     const dir = join(root, 'empty-dir')
     const file = join(root, 'empty-file')
+    if (this.disposed) {
+      this.mask = { available: false, dir, file: void 0 }
+      return
+    }
     try {
       // Leftover from a previous run: the mask directory has mode 000, so it can be
       // neither removed nor worked around — give the permissions back first.

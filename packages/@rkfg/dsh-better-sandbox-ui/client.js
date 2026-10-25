@@ -96,6 +96,9 @@ window.__ModuleLoader__.load({
 				} else if (line !== "~" && !line.startsWith("~/")) {
 					if (line.startsWith("~")) problems.push({ entry: line, reason: "tildeUser" })
 					else if (!line.startsWith("/")) problems.push({ entry: line, reason: "relative" })
+					// One rule for the whole filesystem would cover every path the session
+					// works in, so the host refuses it; the form says so before saving.
+					else if (line === "/") problems.push({ entry: line, reason: "rootPath" })
 				}
 				if (seen.has(line)) problems.push({ entry: line, reason: "duplicate" })
 				else seen.add(line)
@@ -270,6 +273,9 @@ window.__ModuleLoader__.load({
 			)
 		}
 
+		// `remote.sandboxGuard` is deliberately absent: a client namespace exists only when
+		// the build pipeline generates the `./typert` and `./remote` artifacts, and declaring
+		// one the bridge cannot resolve leaves the whole entry pending.
 		const inject = ["slots", "locale", "connection", "remote", "remote.settings"]
 
 		function apply(ctx) {
@@ -301,6 +307,7 @@ window.__ModuleLoader__.load({
 					badSegment: "expected one path name, for example .git",
 					badToken: "expected one lowercase word, for example write-segment",
 					badReservedLevel: "that name is a mode of the built-in ladder, the level needs another one",
+					badRootPath: "a rule for the whole filesystem is refused, name the directory instead",
 					conflict: "the profile changed after this form was loaded — the fresh revision is in place, check the values and save again",
 				},
 				zh: {
@@ -330,6 +337,7 @@ window.__ModuleLoader__.load({
 					badSegment: "期望单个路径名，例如 .git",
 					badToken: "期望一个小写单词，例如 write-segment",
 					badReservedLevel: "该名称属于内置模式，提权级别需要另一个名称",
+					badRootPath: "不允许整条文件系统规则，请写明具体目录",
 					conflict: "本表单载入后配置已被修改 — 已取到最新修订版本，请检查内容后再次保存",
 				},
 			})

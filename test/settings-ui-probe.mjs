@@ -104,7 +104,7 @@ const filled = await evaluate(`
   const areas = [...document.querySelectorAll('textarea')]
   if (areas.length === 0) return { areas: 0 }
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
-  setter.call(areas[0], "/tmp/ok-dir\\nrelative/path\\n~root/keys\\n/tmp/ok-dir")
+  setter.call(areas[0], "/tmp/ok-dir\\nrelative/path\\n~root/keys\\n/\\n/tmp/ok-dir")
   areas[0].dispatchEvent(new Event('input', { bubbles: true }))
   // path-name field: .git is a valid rule, a segment with a separator is not
   const last = areas[areas.length - 1]
@@ -138,6 +138,8 @@ const verdict = await evaluate(`
     blocked: grab(/some lines are unusable|部分条目无法使用/i),
     segment: grab(/expected one path name|期望单个路径名/i),
     token: grab(/expected one lowercase word|期望一个小写单词/i),
+    // a rule for the whole filesystem is refused by the form itself, before saving
+    rootPath: grab(/a rule for the whole filesystem|不允许整条文件系统规则/i),
     raw: text.slice(0, 4000),
   }`)
 
@@ -147,7 +149,7 @@ if (settings !== true) failures.push('the Settings dialog did not open')
 if (section !== true) failures.push('the Sandbox section was not found in Settings')
 if (filled.areas === 0) failures.push('the section has no input fields')
 if (saved !== true) failures.push('the Save button was not found')
-for (const key of ['relative', 'tildeUser', 'duplicate', 'blocked', 'segment']) {
+for (const key of ['relative', 'tildeUser', 'duplicate', 'blocked', 'segment', 'rootPath']) {
   if (verdict[key] === null) failures.push(`the "${key}" caption never appeared`)
 }
 // The level field is only worth asserting when the page actually rendered it.

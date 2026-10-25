@@ -337,8 +337,18 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
           - ~/.cache
           - ~/.dsh-probe-missing
           - $DSH_HOME/allowed
+          # hostile on purpose: the whole filesystem, and a grant over the folder holding
+          # the mask stubs — both have to be refused by the host, not only by the form
+          - /
+          - $profiles/allowtest/better-sandbox/.mask
         readDenyDirs:
           - $DSH_HOME/run/secretdir
+          # hostile on purpose: a mask over the working directory protects nothing
+          - $DSH_HOME/run
+        denyScanRoots:
+          # the repository under `run/deep` sits below denyDepth; naming it here is what
+          # brings it back under protection without raising the depth for every root
+          - $DSH_HOME/run/deep
         denySegments:
           - .git
           - nested/.git
@@ -370,6 +380,61 @@ run_profile basetest
 
 echo
 echo "### allowtest: with the plugin (expect WROTE in allowed, DENIED in denied and .git; the (level) cases expect WROTE in .git and DENIED outside the workspace)"
-run_profile allowtest 1
+run_profile allowtest 1 | tee "$DSH_HOME/allowtest.txt"
 
-exit $((manifest_status || language_status || table_status || russian_status || workspace_status || dependency_status))
+# The dump above is for the eye; the list below is what makes the contour red or green.
+# Every expectation is a line the driver has to print, so a silent regression in a provider
+# cannot pass by nobody noticing the output changed.
+echo
+echo "### expectations"
+python3 - "$DSH_HOME/allowtest.txt" <<'EXPECT'
+import pathlib, sys
+text = pathlib.Path(sys.argv[1]).read_text()
+must = [
+    'fs write inside-cwd: WROTE',
+    'fs write .git: DENIED FS_SANDBOX_DENIED',
+    'fs write allowed dir: WROTE',
+    'fs write denied dir: DENIED FS_SANDBOX_DENIED',
+    'fs write .git (level): WROTE',
+    'fs write denied dir (level): DENIED FS_SANDBOX_DENIED',
+    'fs read secret file in dir: DENIED FS_SANDBOX_DENIED',
+    'fs list secret dir: DENIED FS_SANDBOX_DENIED',
+    'fs watch on secret dir: DENIED FS_SANDBOX_DENIED',
+    'bash cat secret file in dir: exit=1 denial-signature=true',
+    'bash cat secret file: exit=1 denial-signature=true',
+    # the mask refuses the same file named differently; only the wider dialect calls that a
+    # policy refusal, which is the documented trade of `readDenialSignature: paths`
+    'bash cat secret file (other spelling): exit=1 denial-signature=false',
+    'validate covers-workspace: covers-workspace',
+    'the level is offered from: ["workspace-write"]',
+    # a stub replaced by a symlink must neither leak nor survive
+    'stub replaced with a symlink: symlink=true',
+    'command through the replaced stub: exit=1 leaked=false',
+    'stub rebuilt by the check: directory=true mode=0',
+    'mask self-healing: exists=true',
+    # rules that cross a boundary are refused, in the effective lists and in the form
+    'no grant for the filesystem root: true',
+    'no grant inside the plugin folder',
+    # a protection the user configured must not be silently absent in a healthy contour
+    'guard gaps: []',
+    'deep repository bound (denyScanRoots names it): true',
+    'install risk (plugin inside the working root): ""',
+    'rules from config are visible right away: true',
+]
+must_in_one_line = [
+    ['refused by the lists:', 'writableDirs:root'],
+    ['refused by the lists:', 'writableDirs:inside-harness'],
+    ['refused by the lists:', 'readDenyDirs:covers-workspace'],
+    ['validate of "/":', '"root"'],
+]
+forbidden = ['command through the replaced stub: exit=0', 'leaked=true', 'fs watch on secret dir: WATCH ALLOWED']
+problems = [f'missing: {line}' for line in must if line not in text]
+problems += [f'missing pair {pair} on one line' for pair in must_in_one_line if not any(all(part in line for part in pair) for line in text.splitlines())]
+problems += [f'present but must not be: {line}' for line in forbidden if line in text]
+print('no problems' if not problems else '\n'.join(problems))
+sys.exit(1 if problems else 0)
+EXPECT
+expect_status=$?
+
+exit $((manifest_status || language_status || table_status || russian_status || workspace_status || dependency_status || expect_status))
+

@@ -7,7 +7,7 @@
  * @module dsh-better-sandbox/driver
  */
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -21,7 +21,11 @@ if (process.env.BETTER_SANDBOX_DRIVER_PLUGIN === '1') inject.push('betterSandbox
 
 const readAll = (handle, stream) => handle.collected?.[stream]?.readFrom(0)?.text ?? ''
 
+/** The dialect assumed when a backend reports none of its own. */
 const DENIAL_SIGNATURES = ['read-only file system', 'permission denied', 'operation not permitted']
+
+/** The same case-insensitive substring test the bash tool applies to a settled run. */
+const hitsSignature = (stderr, signatures) => signatures.some((signature) => stderr.includes(String(signature).toLowerCase()))
 
 const WRITE_CASES = [
   ['fs write inside-cwd', 'normal/probe.txt'],
@@ -66,6 +70,10 @@ const BASH_CASES = [
   ['bash cat secret file in dir', 'cat "$5"'],
   ['bash ls secret dir', 'ls "$6"'],
   ['bash cat secret file', 'cat "$7"'],
+  // the same file named the other way round: still refused by the mask, but the extra
+  // dialect matches the protected paths themselves, so only `readDenialSignature: any`
+  // recognizes a refusal whose message spells the path differently
+  ['bash cat secret file (other spelling)', 'cat ../secretfile.txt'],
   ['bash touch inside secret dir', 'touch "$6/attempt.txt"'],
   ['bash cat normal file', 'cat "$8"'],
 ]
@@ -77,6 +85,14 @@ const RG_CASES = [
 ]
 
 const pathOf = (cwd, rel) => new URL(`file://${cwd}/${rel}`).pathname
+
+/** Whether `path` is `root` or lies beneath it, compared by segments. */
+const isUnder = (path, root) => {
+  if (root === '' || typeof path !== 'string') return false
+  if (path === root) return true
+  const prefix = root.endsWith('/') ? root : `${root}/`
+  return path.startsWith(prefix)
+}
 
 export async function apply(ctx) {
   const cwd = process.cwd()
@@ -90,9 +106,11 @@ export async function apply(ctx) {
   out.push(`readDenyDirs: ${JSON.stringify(allow?.readDirs ?? null)}, readDenyFiles: ${JSON.stringify(allow?.readFiles ?? null)}, mask: ${allow?.mask?.available ? '000' : 'fallback'}`)
   out.push(`tilde expanded: ${JSON.stringify((allow?.roots ?? []).filter((root) => root.includes('/.cache')))}, dropped/suspicious: ${JSON.stringify(allow?.rejected ?? null)}`)
 
-  // fixtures: a repository, a nested repository, the "secrets"
+  // fixtures: a repository, a nested repository, the "secrets", and a repository below the
+  // scan depth (denyDepth) so the truncation report has something to name
   mkdirSync(`${cwd}/normal`, { recursive: true })
   mkdirSync(`${cwd}/secretdir/sub`, { recursive: true })
+  mkdirSync(`${cwd}/deep/a/b/.git`, { recursive: true })
   writeFileSync(`${cwd}/normal/probe.txt`, 'ordinary content\n')
   writeFileSync(`${cwd}/secretdir/id_rsa`, 'SECRET KEY\n')
   writeFileSync(`${cwd}/secretdir/sub/nested`, 'SECRET IN NESTED\n')
@@ -150,7 +168,9 @@ export async function apply(ctx) {
     `${cwd}/../denied/bash-probe.txt`,
     `${cwd}/secretdir/id_rsa`,
     `${cwd}/secretdir`,
-    `${cwd}/../secretfile.txt`,
+    // the canonical spelling of the read-protected file: the dialect added for masked reads
+    // matches the protected paths themselves, so this is the spelling it recognizes
+    (allow?.readFiles ?? [])[0] ?? `${cwd}/../secretfile.txt`,
     `${cwd}/normal/probe.txt`,
   ]
   for (const [label, spec] of BASH_CASES) {
@@ -160,7 +180,7 @@ export async function apply(ctx) {
     const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
     const signatures = confined.denialSignatures ?? DENIAL_SIGNATURES
     out.push(
-      `${label}: exit=${result.status} denial-signature=${signatures.some((signature) => stderr.includes(signature))} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
+      `${label}: exit=${result.status} denial-signature=${hitsSignature(stderr, signatures)} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
     )
   }
   // the same commands under the level: the protected names are open, the rest is intact
@@ -171,9 +191,36 @@ export async function apply(ctx) {
     const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
     const signatures = confined.denialSignatures ?? DENIAL_SIGNATURES
     out.push(
-      `${label}: exit=${result.status} denial-signature=${signatures.some((signature) => stderr.includes(signature))} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
+      `${label}: exit=${result.status} denial-signature=${hitsSignature(stderr, signatures)} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-90)}`,
     )
   }
+  // regression: a stub replaced by a symlink must not turn into a read grant. A bind
+  // follows its source, so a stub that points at another directory mounts that directory
+  // over the protected path — the point of the check is the type and the mode of the stub,
+  // not merely its presence.
+  const stubDir = allow?.mask?.dir
+  if (stubDir === void 0) {
+    out.push('no mask was created — stub substitution skipped')
+  } else {
+    const leak = `${cwd}/../leak`
+    mkdirSync(leak, { recursive: true })
+    writeFileSync(`${leak}/leaked.txt`, 'LEAKED CONTENT\n')
+    try { chmodSync(stubDir, 0o755) } catch {}
+    rmSync(stubDir, { recursive: true, force: true })
+    symlinkSync(leak, stubDir)
+    out.push(`stub replaced with a symlink: symlink=${lstatSync(stubDir).isSymbolicLink()}`)
+    const swapped = [...args]
+    swapped[2] = 'cat "$6/leaked.txt"'
+    const confined = await ctx.sandbox.confine(swapped, policy)
+    const result = spawnSync(confined.argv[0], confined.argv.slice(1), { encoding: 'utf8', cwd })
+    const stderr = `${result.stdout ?? ''}${result.stderr ?? ''}`
+    out.push(
+      `command through the replaced stub: exit=${result.status} leaked=${stderr.includes('LEAKED CONTENT')} :: ${stderr.trim().replace(/\n/g, ' | ').slice(-70)}`,
+    )
+    const restored = lstatSync(stubDir)
+    out.push(`stub rebuilt by the check: directory=${restored.isDirectory()} mode=${(restored.mode & 0o777).toString(8)}`)
+  }
+
   // regression: an external process wiped the mode-000 mask stubs (as a package
   // reinstall does) — confine must keep working, the mask must restore itself
   const maskDir = allow?.mask?.dir
@@ -221,6 +268,41 @@ export async function apply(ctx) {
     const rejected = allow.validatePath('readDir', expected)
     out.push(`validate covers-workspace: ${rejected.ok ? 'NOT rejected (expected a denial!)' : rejected.reason}`)
 
+    // The boundaries a rule may not cross. The contour config offers the filesystem root and
+    // a grant inside the plugin folder (that is where the mask stubs live), and the answers
+    // have to be the same from the form (validatePath) and from the effective lists.
+    out.push(`validate of "/": ${JSON.stringify(allow.validatePath('writableDir', '/'))}`)
+    out.push(`refused by the lists: ${JSON.stringify((allow.rejected ?? []).map((row) => `${row.field}:${row.reason}`))}`)
+    out.push(`no grant for the filesystem root: ${!(allow.roots ?? []).includes('/')}`)
+    const pluginRoot = allow.mask?.dir === void 0 ? '' : dirname(dirname(allow.mask.dir))
+    out.push(`no grant inside the plugin folder (${pluginRoot}): ${(allow.roots ?? []).every((root) => !isUnder(root, pluginRoot))}`)
+
+    // Why a guard is not in force, if any: the model is told about holes, the page shows
+    // every reason including the rules that simply did not install.
+    out.push(`guard gaps: ${JSON.stringify(allow.gaps ?? null)}`)
+    out.push(`guard notices: ${JSON.stringify((allow.notices ?? []).map((row) => `${row.hole ? 'hole' : 'issue'}:${row.key}`))}`)
+
+    // Where the bounded walk stopped: a protected name below the depth limit is unprotected
+    // inside commands, and that has to be visible rather than silent. The contour names that
+    // same repository in `denyScanRoots`, so it is protected while the report still shows the
+    // places where the walk from the working root stopped.
+    out.push(`scan truncated: ${JSON.stringify(allow.scanTruncated ?? null)}`)
+    const deepBound = (allow.protectedUnder([cwd]) ?? []).some((path) => path.includes('/deep/'))
+    out.push(`deep repository bound (denyScanRoots names it): ${deepBound}`)
+    out.push(`install risk (plugin inside the working root): ${JSON.stringify(allow.installRisk ?? '')}`)
+
+    // A watcher reports that something changed under a path, which is a read of that path.
+    let watchOutcome = 'no error'
+    try {
+      const target = await ctx.fs.resolve(pathOf(cwd, 'secretdir'))
+      const dispose = await ctx.fs.watch(target, () => {}, new AbortController().signal)
+      if (typeof dispose === 'function') dispose()
+      watchOutcome = 'WATCH ALLOWED (expected a denial!)'
+    } catch (error) {
+      watchOutcome = `DENIED ${error.code ?? error.name}`
+    }
+    out.push(`fs watch on secret dir: ${watchOutcome}`)
+
     // The vocabulary the model is offered: first what the mounted tools actually
     // advertise (scripts/webfull.sh with DSH_PROBE=driver is where they are non-null),
     // then `patchField` pointed at a field of the same shape, which proves the patch
@@ -233,6 +315,9 @@ export async function apply(ctx) {
     // are mounted on the agent plane, where a context-global `get()` cannot reach them.
     out.push(`tools visible globally: ${JSON.stringify((ctx.get('tools')?.schemas?.() ?? []).map((schema) => schema.name).sort())}`)
     out.push(`escalation ladder: ${JSON.stringify(escalation.state().ladder)}`)
+    // The level means "this mode plus the protected names", so it is only offered where that
+    // is a real widening: a read-only session asks for `workspace-write` instead.
+    out.push(`the level is offered from: ${JSON.stringify(escalation.state().reachableFrom)}`)
     const probe = { type: 'string', enum: ['workspace-write', 'danger-full-access'], description: 'base.' }
     escalation.patchField(probe, 'command', 'probe')
     escalation.patchField(probe, 'command', 'probe')

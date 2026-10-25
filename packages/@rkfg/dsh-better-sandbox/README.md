@@ -73,15 +73,18 @@ A `sandbox:rules` block is appended to the runtime context right after the sandb
 Additional write roots beyond the session workspace (workspace-write mode only): <quoted paths, comma separated>.
 Protected path names inside every writable root (workspace-write mode): <quoted names> — writing there is refused the same way as writing outside the workspace.
 Escalation level "<token>": when a write or a command is refused only because of one of those names, retry that exact call once with sandbox_permissions set to "<token>" and a one-sentence justification. It opens every name above for that single call, with the user's approval; every other rule stays exactly as it is. Prefer it over a wider mode.
-Protected from reading (secrets and personal data): <quoted directories and files, comma separated> — reading their contents is refused for tools and denied inside sandboxed commands. Nothing opens them for one call: an escalation cannot cover a read, so ask the user to change the rule when the file is genuinely needed.
+Protected from reading (secrets and personal data): <quoted directories and files, comma separated> — reading their contents is refused for tools and denied inside sandboxed commands. No escalation target of this plugin opens a read, so ask the user to change the rule when the file is genuinely needed.
+Sandbox guards are NOT applied here: <reasons>. The rules above still bind the file tools, but commands run without that part of the protection.
 ```
 
 The escalation line is emitted only when the level is on and at least one protected name
-exists. Separately, `escalation.js` appends one sentence to the `sandbox_permissions`
-parameter description of `bash`, `pwsh`, `write` and `edit` — the model learns there that a
-narrower target than `danger-full-access` exists, because a refusal from `write` or `edit`
-is rewritten by the tool into the shared marker and hint, and the plugin cannot add text to
-it.
+exists. The last line is emitted only while a confinement seam reports that a configured
+protection is not in force — an unrecognized runner, a runner that cannot express the rule,
+a missing mask stub — and it disappears as soon as the protection applies again. Separately,
+`escalation.js` appends one sentence to the `sandbox_permissions` parameter description of
+`bash`, `pwsh`, `write` and `edit` — the model learns there that a narrower target than
+`danger-full-access` exists, because a refusal from `write` or `edit` is rewritten by the
+tool into the shared marker and hint, and the plugin cannot add text to it.
 
 #### Token effect
 
@@ -95,7 +98,7 @@ Append-only relative to the sandbox policy section: existing context lines keep 
 
 #### What the model sees
 
-Indirectly, through `dsh-tool-fs` and `dsh-tool-bash`: the fence's refusal text for protected reads and the runner's refusal signature reach the tool result. The package supplies the read-refusal message and widens the bwrap dialect with `permission denied`, so a masked read surfaces as a policy refusal rather than an unexplained system error. The read refusal omits the shared escalation hint on purpose: no tool advertises `sandbox_permissions` for a read, so the hint would only send the model into a schema error.
+Indirectly, through `dsh-tool-fs` and `dsh-tool-bash`: the fence's refusal text for protected reads and the runner's refusal signature reach the tool result. The package supplies the read-refusal message and widens the bwrap dialect so a masked read surfaces as a policy refusal rather than an unexplained system error: by default the added signatures are the protected paths themselves, which keeps an unrelated permission error an ordinary one (`readDenialSignature` changes that trade). The read refusal omits the shared escalation hint on purpose: no tool advertises `sandbox_permissions` for a read, so the hint would only send the model into a schema error.
 
 #### Token effect
 
@@ -110,9 +113,15 @@ Independent: refusal text belongs to the conversation, not to the system prefix,
 - **A read cannot be escalated** — `read`, `glob` and `grep` advertise no escalation fields, and the filesystem read methods are handed no policy at all. The level covers the two mutations and the confined shells, nothing else; opening a read-protected path means changing the rule.
 - **The level name is model-facing vocabulary** — it must be one lowercase word and must not be `read-only`, `workspace-write` or `danger-full-access`; such a name is reported once and switches the level off.
 - **Already-running persistent shells keep their original confinement** — the level applies to a call, so a terminal or a persistent pwsh session keeps the policy it started with until it is restarted.
-- **bwrap depth for protected names** — names are checked at any depth by the filesystem fence, but confinement binds them only up to `denyDepth`; deeper layouts need a configuration change and a restart.
-- **Landlock cannot express the denials** — subtracting a write from a broader rule and denying a subpath read are unavailable, so those rules are skipped with a single warning.
+- **The level is offered where it widens something** — it means the caller's mode with the protected names writable, so it is added to the targets of a `workspace-write` session only. A `read-only` session asks for `workspace-write`, which is what it actually needs; a narrower target than that would be a card promising less than it grants.
+- **bwrap depth for protected names** — names are checked at any depth by the filesystem fence, but confinement binds them only up to `denyDepth`, and it does not descend into `denySkipDirs` (`node_modules`, `dist`, caches). A repository deeper than that or inside a skipped directory is unwritable for the file tools yet unprotected inside a command; the scan reports where it stopped, and `denyScanRoots` brings a named tree back under protection.
+- **A protected name created moments ago is protected after the scan TTL** — `denyScanTtlMs` is how long a scan stays valid, so a repository initialized a second ago becomes read-only for commands within that window (0 re-walks for every command and pays a synchronous walk each time).
+- **A rule that cannot apply is refused rather than approximated** — the filesystem root, a rule covering or lying inside the files of the harness itself, and a read rule covering the working directory are reported in `rejected` and shown on the Settings page.
+- **Mask stubs are integrity-checked, not kernel-protected** — the stubs are the source of a bind, and a bind follows a symlinked source, so a replaced stub would mount whatever it points at over the protected path. Every command verifies the stub's type and mode and rebuilds it, which detects and repairs a replacement; mode 000 alone would not, since the owner of a stub can always take write access back. A plugin installed inside a working directory has its stubs writable from there, and the host log says so.
+- **Landlock cannot express the denials** — subtracting a write from a broader rule and denying a subpath read are unavailable, so those rules are skipped there; the reason is logged, shown on the page and announced in the model context.
 - **Processes outside the seams are uncovered** — the harness' own git integration and MCP servers do not go through `ctx.subprocess`, by design.
 - **`git` over SSH stops working inside a confined command** while `~/.ssh` is read-protected; `ssh-agent` or an extracted `known_hosts` is required.
+- **A read rule closes reading, not writing** — a path that is read-protected and also writable (a `.env` inside the workspace, for instance) can be overwritten without ever being read. Say so in the rule list or protect the file with the file tools' own boundary.
+- **The refusal dialect is textual** — a masked read is recognized as a policy refusal when the command's error output names the protected path. A command that spells the same path differently (`../file`, a relative path) is still refused by the mask, but reaches the model as an ordinary failure; `readDenialSignature: any` matches the kernel's wording instead, at the cost of calling unrelated permission errors policy denials.
 - **Protected directory names stay visible** in a parent listing — the mask replaces the mount point instead of filtering the parent.
-- **Existence is checked only on the host** — the Settings form blocks unusable syntax (relative paths without `~/`, `~user`, duplicates) but cannot know whether a path exists, since the page has no way to call the plugin service; such a rule stays inert until the directory appears, and `sandboxGuard.state()` reports it as `missing`.
+- **Refused rules are visible, not silent** — the Settings form blocks unusable syntax (relative paths without `~/`, `~user`, a rule for the whole filesystem, duplicates) and lists what the host refused, with the reason, from the plugin's own `sandboxGuard` service. A rule aimed at a path that does not exist is kept and reported as `missing`.

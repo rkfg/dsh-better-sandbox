@@ -14,10 +14,11 @@ Everything is enforced at the harness seams, not by wrapping the agent: the file
 
 | Layer | Mechanism | Covers |
 |---|---|---|
-| Filesystem fence | subclass of the harness `fs-sandbox` provider; checks `stat`, `listDir`, `readText`, `streamText`, `readBytes`, `readByteRange` and every write | tools `read`, `write`, `edit`, `glob`, `grep` and anything else going through `ctx.fs` |
+| Filesystem fence | subclass of the harness `fs-sandbox` provider; checks `stat`, `lstat`, `listDir`, `readText`, `streamText`, `readBytes`, `readByteRange`, `watch` and every write | tools `read`, `write`, `edit` and anything else going through `ctx.fs` |
 | Process confinement | subclass of the harness `sandbox-local` provider; inserts extra `bwrap` binds after the workspace bind | every `bash`/`pwsh`/terminal command the harness confines |
-| Read masks | bind of a mode-000 empty directory/file over a protected path → `EACCES` | reads inside sandboxed commands; the mask is recreated automatically if deleted |
-| Search fence | wrapper around the harness ripgrep spawn, applying the same `bwrap` arguments | `glob`/`grep` tools that shell out to ripgrep |
+| Read masks | bind of a mode-000 empty directory/file over a protected path → `EACCES` | reads inside sandboxed commands; the stubs are verified (type and mode) and rebuilt before every command |
+| Search fence | wrapper around the harness ripgrep spawn, applying the same `bwrap` arguments | `glob`/`grep`, which run ripgrep through `ctx.subprocess` and never through `ctx.fs` |
+| Guard reporting | every reason a grant or a mask was not applied is kept and announced in the model context, written to the host log, and returned by `sandboxGuard.state()` | a rule that silently stopped working, which is the failure mode this plugin must not have |
 | Model context | an announcement block listing the grants and the protected paths | the model knows what is allowed before it tries |
 | Escalation level | the named target is added to the harness' strict-wider table and to the `sandbox_permissions` enum of `bash`, `pwsh`, `write`, `edit` | what the model may ask for, and what one approved call is given |
 
@@ -110,11 +111,11 @@ With `@rkfg/dsh-better-sandbox-ui` installed, the Settings dialog gains a **Sand
 | `denySegments` | path names that must stay unwritable inside every writable root | yes (Settings) |
 | `readDenyDirs`, `readDenyFiles` | hidden from reading via a mode-000 mask | yes (Settings) |
 | `segmentLevel` | name of the escalation level that opens the protected names for one approved call; empty turns it off | yes (Settings) |
-| `denyDepth`, `denyScanTtlMs`, `denySkipDirs` | how the confinement scans for protected names | no (restart) |
-| `maskFallback`, `readDenialSignature` | behaviour when the mask cannot be created, and the denial dialect added for masked reads | no (restart) |
+| `denyDepth`, `denyScanTtlMs`, `denySkipDirs`, `denyScanRoots` | how the confinement scans for protected names: how deep, for how long a scan stays valid (0 re-walks on every command), which directories the walk does not enter, and which extra trees to scan | `denyScanRoots` yes, the rest no |
+| `maskFallback`, `readDenialSignature` | behaviour when the mask cannot be created, and how a masked read is recognized in the output of a command (`paths`, `any`, `off`) | no (restart) |
 | `announceInPrompt` | add the rules to the model context | no (restart) |
 
-Paths accept `~` and `~/…`; `~user` does not expand. Rules that cannot apply are reported by the plugin (`relative`, `covers-harness`), and rules aimed at a path that does not exist are marked `missing`.
+Paths accept `~` and `~/…`; `~user` does not expand. A rule that crosses a boundary is refused rather than approximated, and the reason is written to the host log and returned by `sandboxGuard.state()`: `root` (a rule for the whole filesystem), `covers-harness` or `inside-harness` (a rule over, or inside, the files of the harness itself — the mask stubs live in the plugin folder), `covers-workspace` (a read rule that would hide the working directory), `relative`, `segment`, `missing`.
 
 ## Verifying
 
@@ -129,17 +130,20 @@ Paths accept `~` and `~/…`; `~user` does not expand. Rules that cannot apply a
 
 Read them before trusting the setup — the plugin narrows what an agent can reach, it is not a container.
 
-- A command running with `danger-full-access` is unsandboxed, so the rules do not apply to it.
+- A command running with `danger-full-access` is unsandboxed, so no rule holds inside it — including the read masks, which exist only in a confined mount namespace. The read rules keep the `read`, `glob` and `grep` tools closed there, and nothing else.
 - The harness' own git integration and MCP servers run outside these seams and are not covered by design.
-- bwrap applies protected names up to `denyDepth` levels; the filesystem fence checks them at any depth.
-- Landlock cannot subtract a write from a broader rule or deny a subpath read, so `denySegments` and `readDeny*` are skipped there — the plugin logs a warning instead of pretending.
+- bwrap applies protected names up to `denyDepth` levels and does not descend into `denySkipDirs`; the filesystem fence checks them at any depth. A repository deeper than that is unwritable for the file tools yet unprotected inside a command — the scan reports where it stopped, and `denyScanRoots` names the trees that must be scanned anyway.
+- A protected name created moments ago becomes protected for commands after `denyScanTtlMs`; `0` re-walks the roots for every command instead of paying that window.
+- The mask stubs are verified (type and mode) and rebuilt before every command, because a bind follows a symlinked source and a replaced stub would show whatever it points at. Mode 000 alone is no defence: the owner of a stub can always take write access back. That is why the plugin folder must not be inside a working directory — the host log says when it is.
+- A read rule closes reading, not writing: a read-protected path that is also writable can be overwritten without being read.
+- Landlock cannot subtract a write from a broader rule or deny a subpath read, so `denySegments` and `readDeny*` are skipped there — the reason is logged, shown on the Settings page and announced in the model context rather than hidden.
 - Names of protected directories stay visible in a parent listing: the mask replaces the mount point, it does not filter the parent.
 - `git` over SSH inside a sandboxed command stops working while `~/.ssh` is read-protected; use `ssh-agent` or an extracted `known_hosts`.
 - Deleting a protected directory from outside (an escalated command) is not prevented.
 - A read cannot be escalated: `read`, `glob` and `grep` advertise no escalation fields, so a read-protected path opens only by changing the rule.
 - A persistent terminal or pwsh session keeps the confinement it was started with — the level covers one call, so an already open shell is not re-confined.
 - The level extends a vocabulary the harness owns: the target is written into the tool schemas when they mount and repaired on `tools/change`. If the level stops appearing on the card after a harness upgrade, that seam is the first place to look; the dependency pins hold the harness version for exactly this reason.
-- The Settings page blocks unusable syntax (relative path without `~/`, `~user`, duplicate) in red and refuses to save; it cannot check existence, because the page has no channel to the plugin service, so a rule for a missing directory is accepted and inert until that directory appears.
+- The Settings page blocks unusable syntax (relative path without `~/`, `~user`, a rule for the whole filesystem, duplicate) in red and refuses to save. It cannot show what the host refused: a client namespace exists only when the build pipeline generates the `./typert` and `./remote` artifacts, and this package has none, so refusals, the guard report and the scan truncations live in the host log and in `sandboxGuard.state()`.
 
 ## Related work
 

@@ -146,8 +146,11 @@ DSH_BUNDLE=1 DSH_PROBE=driver ./scripts/webfull.sh     # полный веб-п�
 Additional write roots beyond the session workspace (workspace-write mode only): <список путей в кавычках, через запятую>.
 Protected path names inside every writable root (workspace-write mode): <список имён в кавычках> — writing there is refused the same way as writing outside the workspace.
 Escalation level "<токен>": when a write or a command is refused only because of one of those names, retry that exact call once with sandbox_permissions set to "<токен>" and a one-sentence justification. It opens every name above for that single call, with the user's approval; every other rule stays exactly as it is. Prefer it over a wider mode.
-Protected from reading (secrets and personal data): <каталоги и файлы в кавычках, через запятую> — reading their contents is refused for tools and denied inside sandboxed commands. Nothing opens them for one call: an escalation cannot cover a read, so ask the user to change the rule when the file is genuinely needed.
+Protected from reading (secrets and personal data): <каталоги и файлы в кавычках, через запятую> — reading their contents is refused for tools and denied inside sandboxed commands. No escalation target of this plugin opens a read, so ask the user to change the rule when the file is genuinely needed.
+Sandbox guards are NOT applied here: <причины>. The rules above still bind the file tools, but commands run without that part of the protection.
 ```
+
+Последняя строка появляется только тогда, когда какой-то из швов confinement сообщил, что настроенная защита не действует (нераспознанный раннер, раннер, который не умеет правило, отсутствующий стаб маски), и исчезает, как только защита снова применяется.
 
 Кроме того, `lib/escalation.js` дописывает одно предложение к описанию параметра
 `sandbox_permissions` у `bash`, `pwsh`, `write`, `edit`: оттуда модель узнаёт, что
@@ -204,12 +207,38 @@ Independent: сообщения об отказах принадлежат ис�
   некому выдать.
 - **Постоянные оболочки помнят свой confinement** — терминал и pwsh-сессия
   сохраняют правила, полученные при запуске; уровень действует на один вызов.
-- **Глубина `.git` в bwrap ограничена `denyDepth`** — сегмент имени проверяется на
-  любой глубине в `ctx.fs`, но в confinement только до `denyDepth`; глубже нужна
-  правка поля, и это рестарт.
+- **Уровень предлагается там, где он действительно расширяет права** — он означает
+  «те же права вызова, но защищённые имена открыты», поэтому добавляется в список
+  целей только сессии `workspace-write`. Сессии `read-only` нужен `workspace-write`,
+  и она просит именно его: более узкая цель была бы карточкой, обещающей меньше,
+  чем она даёт.
+- **Глубина защищённых имён в bwrap ограничена `denyDepth`** — сегмент имени
+  проверяется на любой глубине в `ctx.fs`, но в confinement только до `denyDepth`,
+  и обход не спускается в `denySkipDirs` (`node_modules`, `dist`, кэши). Репозиторий
+  глубже для файловых инструментов закрыт, а внутри команды — нет: место обрыва
+  видно в отчёте скана, а нужное дерево добавляется в `denyScanRoots`.
+- **Свежесозданное защищённое имя защищено для команд не мгновенно** — `denyScanTtlMs`
+  задаёт срок годности скана; `0` означает пересканировать корни перед каждой командой,
+  платя синхронным обходом за каждую.
+- **Неприменимое правило отвергается, а не приближается** — корень файловой системы,
+  правило поверх файлов самого харнесса или внутри них, а также правило на чтение,
+  накрывающее рабочую папку, попадают в `rejected`: их пишет лог хоста и возвращает `sandboxGuard.state()`.
+- **Стабы маски проверяются, но не защищены ядром** — стаб является источником
+  привязки, а привязка следует за симлинком-источником: подменённый стаб смонтировал бы
+  то, на что он указывает, поверх защищённого пути. Каждая команда проверяет тип и режим
+  стаба и пересобирает его — режим 000 сам по себе не защита, ведь владелец всегда
+  вернёт себе запись. Если плагин установлен внутри рабочей папки, её обитатели могут
+  писать в папку стабов, и страница настроек об этом сообщает.
+- **Правило на чтение закрывает чтение, но не запись** — закрытый от чтения путь,
+  который к тому же записываем (`.env` в рабочей папке), можно перезаписать, не читая.
+- **Диалект отказа текстовый** — отказ маски опознаётся как политический, когда вывод
+  команды называет защищённый путь. Команда, назвавшая тот же путь иначе (`../file`,
+  относительный путь), по-прежнему получает отказ маски, но доходит до модели как
+  обычная ошибка; `readDenialSignature: any` матчит вместо этого формулировку ядра —
+  ценой того, что посторонние ошибки прав тоже станут «политическими отказами».
 - **Landlock не выражает ни вычитание записи, ни запрет чтения подпути** — при
-  выборе этого раннера `denySegments` и `readDeny*` не применяются, о чём пишется
-  предупреждение; молчаливой имитации защиты нет.
+  выборе этого раннера `denySegments` и `readDeny*` не применяются; причина идёт
+  в лог, на страницу настроек и в контекст модели вместо имитации защиты.
 - **Процессы вне песочницы не покрыты**: MCP-серверы и git-интеграция самого
   харнесса через `ctx.subprocess` идут pass-through и не должны ломаться.
 - **git по SSH внутри песочницы неработоспособен**, пока `~/.ssh` закрыт от чтения:

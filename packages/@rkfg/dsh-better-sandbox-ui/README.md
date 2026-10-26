@@ -72,6 +72,8 @@ Independent: prefix reuse is affected only by the announcement block owned by `@
 
 ## Known Limitations and Deferred Work
 
+- **The settings layer checks paths, not values** — `settings.update` merges the patch and rejects only fields that are not volatile, so a rule the host would refuse (a bare `/`, a `~/…` that walks out of the home directory) can still be saved. The form refuses the shapes a browser can see; the host refuses the path it resolves to and reports the reason in its log and in `sandboxGuard.state()`.
+- **A patch-layer override makes the section read-only** — when the profile's `cordis.patch.yml` carries the `better-sandbox` config, every write through the settings layer is refused with “overridden by a home patch or command-line overlay”. Editing from the page requires the lists to live in the settings document instead.
 - **No existence check in the form** — the page cannot call the plugin service (a client namespace needs the generated `./typert` and `./remote` artifacts, which this package does not have), so it validates syntax only, including rejecting a rule for the whole filesystem; a rule pointing at a missing directory is saved and reported by the host as `missing` in `sandboxGuard.state()`, together with every rule the host refused.
 - **Volatile fields only** — `denyDepth`, `denyScanTtlMs`, `denySkipDirs`, `maskFallback`, `readDenialSignature` are not shown: provider constructors read them, so they require a restart.
 - **No apply-preview** — the form does not show which existing rules changed state (newly readable, newly protected) after a save.

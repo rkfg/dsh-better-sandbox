@@ -99,6 +99,12 @@ window.__ModuleLoader__.load({
 					// One rule for the whole filesystem would cover every path the session
 					// works in, so the host refuses it; the form says so before saving.
 					else if (line === "/") problems.push({ entry: line, reason: "rootPath" })
+				} else if (/(^|\/)\.\.(\/|$)/.test(line)) {
+					// `~/…` is expanded against a home directory the page cannot resolve, and a
+					// `..` segment can walk the result back out of it — as far as the filesystem
+					// root. The host refuses whatever such a spelling resolves to; the form
+					// refuses the spelling itself.
+					problems.push({ entry: line, reason: "parentSegment" })
 				}
 				if (seen.has(line)) problems.push({ entry: line, reason: "duplicate" })
 				else seen.add(line)
@@ -156,6 +162,17 @@ window.__ModuleLoader__.load({
 				reload()
 			}, [reload])
 
+			// A change made elsewhere while the section is open: take the new revision, keep what
+			// the user typed, and say that the stored rules moved under the form.
+			useEffect(function () {
+				if (typeof api.subscribe !== "function") return
+				return api.subscribe(function () {
+					Promise.resolve(reload(true)).then(function () {
+						setStatus(t("remoteChanged"))
+					})
+				})
+			}, [api, reload, t])
+
 			const save = function () {
 				if (state === null || drafts === null) return
 				const found = {}
@@ -191,11 +208,12 @@ window.__ModuleLoader__.load({
 						return reload()
 					})
 					.catch(function (failure) {
-						// SETTINGS_CONFLICT means the profile was edited somewhere else after this
-						// form loaded its values. The revision must be refreshed and what has been
-						// typed kept: otherwise the user's edit would be lost along with the
-						// rejection.
-						if (failure.code === "SETTINGS_CONFLICT") {
+						// A conflict means the profile was edited somewhere else after this form
+						// loaded its values: the revision has to be refreshed and what the user
+						// typed kept, or the edit is lost along with the rejection. The settings
+						// service throws SETTINGS_CONFLICT, and the remote controller maps it to the
+						// wire code settings/conflict — the page is handed the second spelling.
+						if (failure.code === "SETTINGS_CONFLICT" || failure.code === "settings/conflict") {
 							setError(t("conflict"))
 							return reload(true)
 						}
@@ -308,6 +326,8 @@ window.__ModuleLoader__.load({
 					badToken: "expected one lowercase word, for example write-segment",
 					badReservedLevel: "that name is a mode of the built-in ladder, the level needs another one",
 					badRootPath: "a rule for the whole filesystem is refused, name the directory instead",
+					badParentSegment: "a .. segment can walk ~/… out of the home directory, write the path without it",
+					remoteChanged: "the stored rules changed elsewhere — the revision is refreshed, your text is kept",
 					conflict: "the profile changed after this form was loaded — the fresh revision is in place, check the values and save again",
 				},
 				zh: {
@@ -338,6 +358,8 @@ window.__ModuleLoader__.load({
 					badToken: "期望一个小写单词，例如 write-segment",
 					badReservedLevel: "该名称属于内置模式，提权级别需要另一个名称",
 					badRootPath: "不允许整条文件系统规则，请写明具体目录",
+					badParentSegment: ".. 段会把 ~/… 带出主目录，请写成完整路径",
+					remoteChanged: "已保存的规则在别处被修改 — 修订版本已刷新，你的输入已保留",
 					conflict: "本表单载入后配置已被修改 — 已取到最新修订版本，请检查内容后再次保存",
 				},
 			})
@@ -381,11 +403,27 @@ window.__ModuleLoader__.load({
 				},
 			}
 
+			// The document can change while this section sits open — another window, the config
+			// file, a patch edit. The revision is a compare-and-set counter, so a stale one turns
+			// the next Save into a rejection; taking the new snapshot when the document moves
+			// keeps the typed text and drops the stale revision.
+			const listeners = new Set()
+			const offSettings = typeof ctx.remote.$on === "function" ? ctx.remote.$on("settings/document-updated", function (ns) {
+				if (ns !== NS) return
+				for (const listener of listeners) listener()
+			}) : void 0
+
 			ctx.effect(function () {
 				return function () {
 					if (typeof locale === "function") locale()
+					if (typeof offSettings === "function") offSettings()
 				}
 			}, "better-sandbox-ui: section dictionary")
+
+			const subscribe = function (listener) {
+				listeners.add(listener)
+				return function () { listeners.delete(listener) }
+			}
 
 			ctx.slots.inject("settings.section", function () {
 				return ctx.slots.register(
@@ -395,7 +433,7 @@ window.__ModuleLoader__.load({
 						order: 45,
 						label: function () { return t("nav") },
 						inject: function () {
-							return { t: t, api: api }
+							return { t: t, api: api, subscribe: subscribe }
 						},
 					},
 					SandboxSection

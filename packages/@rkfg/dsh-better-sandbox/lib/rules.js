@@ -71,16 +71,21 @@ const isSegmentName = (value) =>
   typeof value === 'string' && value !== '' && value === value.trim() && !value.includes('/') && !value.includes('\\') && value !== '.' && value !== '..' && !value.startsWith('~')
 
 /**
- * The files of the harness itself: its own package and this plugin's folder. Two things
- * follow from them. A rule may not cover them (the harness would stop being able to read
- * its own code and state), and a rule may not lie inside them either — the mask stubs live
- * in the plugin folder, and a writable stub is no stub at all.
+ * The files of the harness itself: this plugin's folder and the scope directory the harness
+ * packages resolve from. Two things follow from them. A rule may not cover them (the harness
+ * would stop being able to read its own code and state), and a rule may not lie inside them
+ * either — the mask stubs live in the plugin folder, and a writable stub is no stub at all.
+ *
+ * The scope directory, not the installation root: a harness installed as a dependency of the
+ * project that runs it (the usual case once the contour pins the CLI in this workspace) puts
+ * the installation root over the project itself, which would make every path of that project
+ * look like harness code.
  */
 const harnessPaths = () => {
   const out = [pluginDir]
   try {
     const packageDir = dirname(fileURLToPath(import.meta.resolve('@deepseek-ai/cordis/package.json')))
-    out.push(dirname(dirname(dirname(packageDir))))
+    out.push(dirname(packageDir))
   } catch {}
   return out.map(canonical).filter((path) => isAbsolute(path))
 }

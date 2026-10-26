@@ -36,6 +36,13 @@ done
 [[ -d $home ]] || { echo "no such DSH_HOME: $home" >&2; exit 1; }
 home=$(cd "$home" && pwd -P)
 [[ -n $profile && $profile != */* && $profile != .* ]] || { echo "the profile name is one path segment: $profile" >&2; exit 2; }
+# A dropped name names a folder under the profile's node_modules and gets removed with
+# everything inside it, so it has to be a package name rather than a path.
+if [[ ${#drop[@]} -gt 0 ]]; then
+  for name in "${drop[@]}"; do
+    [[ $name =~ ^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+$ ]] || { echo "the dropped package name is not a package name: $name" >&2; exit 2; }
+  done
+fi
 
 src="$root/packages/@rkfg/dsh-better-sandbox"
 uipkg="$root/packages/@rkfg/dsh-better-sandbox-ui"

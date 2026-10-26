@@ -1,0 +1,20 @@
+version: 2
+
+updates:
+  # A committed lockfile only buys reproducibility while someone refreshes it. Weekly PRs
+  # keep the pinned harness tree current, and reviewing them is where a freshly released
+  # dependency can be left to age for a day before it runs in the release job.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      harness:
+        patterns:
+          - "@deepseek-ai/*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

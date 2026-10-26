@@ -6,7 +6,7 @@
 #
 #   ./scripts/check.sh
 #
-# Requires: the harness CLI (npm install --global @deepseek-ai/dsh) and bwrap.
+# Requires: the pinned dependency tree of this workspace (`npm ci`) and bwrap.
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export DSH_HOME="$root/.dsh-test"
@@ -14,7 +14,10 @@ profiles="$DSH_HOME/profiles"
 src="$root/packages/@rkfg/dsh-better-sandbox/lib"
 ui="$root/packages/@rkfg/dsh-better-sandbox-ui"
 
-command -v dsh >/dev/null || { echo "the harness CLI is required: npm install --global @deepseek-ai/dsh" >&2; exit 1; }
+# The contour runs the harness CLI this workspace pins — the copy the lockfile fixed, not
+# whatever version happens to be installed globally.
+export PATH="$root/node_modules/.bin:$PATH"
+command -v dsh >/dev/null || { echo "the harness CLI is required: run npm ci in $root (it installs the pinned @deepseek-ai/dsh)" >&2; exit 1; }
 command -v bwrap >/dev/null || { echo "bubblewrap (bwrap) is required for the confinement checks" >&2; exit 1; }
 # Installed is not the same as usable: the contour asserts the mounts bwrap makes, and a
 # host that refuses an unprivileged user namespace runs the commands under landlock, where

@@ -13,6 +13,10 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 export DSH_HOME="$root/.dsh-test"
 prof="$DSH_HOME/profiles/webfull"
 port=${DSH_TEST_PORT:-3181}
+# The pinned tree of this workspace, not a globally installed CLI: the web contour has to
+# boot the same harness build the lockfile fixed and the release run will use.
+export PATH="$root/node_modules/.bin:$PATH"
+command -v dsh >/dev/null || { echo "the harness CLI is required: run npm ci in $root (it installs the pinned @deepseek-ai/dsh)" >&2; exit 1; }
 
 rm -rf "$prof"
 mkdir -p "$prof" "$DSH_HOME/logs"

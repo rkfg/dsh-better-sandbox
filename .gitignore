@@ -8,4 +8,8 @@ packages/*/node_modules/
 packages/*/lib/.mask/
 *.bak-*
 *.log
-package-lock.json
+
+# The harness CLI is a development dependency of this workspace, and the contour runs the
+# copy it resolves to. The lockfile is what makes "the same version" mean "the same code":
+# the harness pulls over six hundred transitive packages, all of them resolved by range.
+# So package-lock.json is committed on purpose, and CI runs `npm ci` against it.

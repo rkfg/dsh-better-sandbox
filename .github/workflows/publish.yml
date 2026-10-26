@@ -16,8 +16,11 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      HARNESS_VERSION: 0.2.1-rc.2
+    # A tag push alone must not be enough to ship code. The environment carries the
+    # required-reviewer gate and the audit log, and its name is the claim the npm trusted
+    # publisher should require — a workflow that does not declare it then cannot publish.
+    environment: npm
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +28,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          cache: npm
 
       - name: Sandbox tooling
         run: |
@@ -37,8 +41,12 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --dev-bind / / true
 
-      - name: Install the harness CLI
-        run: npm install --global @deepseek-ai/dsh@${{ env.HARNESS_VERSION }}
+      # The harness CLI is a development dependency of this workspace, and the contour runs
+      # the copy the lockfile pinned: over six hundred transitive packages, each with its
+      # integrity hash. Resolving them again per run would let a compromised release reach a
+      # job that holds the OIDC token for npm.
+      - name: Install the pinned dependency tree
+        run: npm ci
 
       - name: Run the contour before publishing
         run: |

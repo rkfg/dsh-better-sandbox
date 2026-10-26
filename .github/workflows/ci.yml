@@ -11,14 +11,13 @@ permissions:
 jobs:
   contour:
     runs-on: ubuntu-latest
-    env:
-      HARNESS_VERSION: 0.2.1-rc.2
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
 
       - name: Sandbox tooling
         run: |
@@ -32,8 +31,11 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --dev-bind / / true
 
-      - name: Install the harness CLI
-        run: npm install --global @deepseek-ai/dsh@${HARNESS_VERSION}
+      # The contour runs the harness CLI this workspace pins as a devDependency, from
+      # node_modules/.bin: the lockfile fixes every transitive package and its integrity
+      # hash, so a green run describes the same tree a release run will see.
+      - name: Install the pinned dependency tree
+        run: npm ci
 
       - name: Syntax and manifest checks
         run: bash scripts/lint.sh

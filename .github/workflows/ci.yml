@@ -44,6 +44,11 @@ jobs:
       - name: Web contour (bundle plus Settings page)
         run: DSH_BUNDLE=1 DSH_UI=1 DSH_PROBE=driver DSH_TEST_TIMEOUT=90 bash scripts/webfull.sh
 
+      # Live rule editing in the form the packages are really installed in: the settings layer
+      # must write the profile patch and the rules must apply without a restart.
+      - name: Settings page writes apply to a bundle-installed profile
+        run: DSH_BUNDLE=1 DSH_UI=1 DSH_PROBE=settings-write DSH_TEST_TIMEOUT=90 bash scripts/webfull.sh
+
       # The step above only means something if it can fail: this one injects an entry that
       # cannot resolve and requires the contour to notice.
       - name: The web contour gate can fail

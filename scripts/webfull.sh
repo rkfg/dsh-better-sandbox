@@ -159,7 +159,16 @@ fi
 # markers are asserted, not read: a client entry that mounts but does nothing looks identical
 # to a working one in a log nobody parses.
 case "${DSH_PROBE:-}" in
-  settings-write) expected=('page present=true' 'update failed: Configuration for "better-sandbox" is overridden' 'refused by the layer' 'read old directory (no longer read-protected): DENIED' 'read new directory (just read-protected): DENIED') ;;
+  settings-write)
+    # The settings layer edits the profile's own patch file. A row that names the module by a
+    # relative path (the contour's module mode) is not matched by the editor, so the write is
+    # refused; a bundle-installed entry — the ordinary installation — saves and applies live.
+    if [[ -n ${DSH_BUNDLE:-} ]]; then
+      expected=('page present=true' 'update: ok' 'ACCEPTED — the layer validates paths, not values' 'read old directory (no longer read-protected): READ' 'read new directory (just read-protected): DENIED')
+    else
+      expected=('page present=true' 'update failed: Configuration for "better-sandbox" is overridden' 'refused by the layer' 'read old directory (no longer read-protected): DENIED' 'read new directory (just read-protected): DENIED')
+    fi
+    ;;
   driver) expected=('fs write allowed dir: WROTE' 'fs write .git: DENIED FS_SANDBOX_DENIED' 'readDenyDirs: [' 'escalation level: "write-segment"') ;;
   *) expected=() ;;
 esac

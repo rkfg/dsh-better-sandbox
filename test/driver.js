@@ -276,6 +276,9 @@ export async function apply(ctx) {
     out.push(`no grant for the filesystem root: ${!(allow.roots ?? []).includes('/')}`)
     const pluginRoot = allow.mask?.dir === void 0 ? '' : dirname(dirname(allow.mask.dir))
     out.push(`no grant inside the plugin folder (${pluginRoot}): ${(allow.roots ?? []).every((root) => !isUnder(root, pluginRoot))}`)
+    // A grant inside a read-protected path cannot coexist with the mask for that path: the
+    // read rule wins, the grant is refused by name, and the path stays closed.
+    out.push(`grant inside a read-protected path refused: ${(allow.rejected ?? []).some((row) => row.reason === 'inside-read-denied')} (still granted: ${(allow.roots ?? []).some((root) => root.includes('/secretdir'))})`)
 
     // Why a guard is not in force, if any: the model is told about holes, the page shows
     // every reason including the rules that simply did not install.

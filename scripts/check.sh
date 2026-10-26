@@ -347,6 +347,9 @@ cat > "$profiles/allowtest/cordis.patch.yml" <<PATCH
           - ~/.cache
           # hostile on purpose: a ~/… spelling that walks back out of the home directory
           - ~/../..
+          # hostile on purpose: a grant inside a read-protected directory — the read rule
+          # wins, and the grant has to be refused by name rather than silently opening the path
+          - $DSH_HOME/run/secretdir/sub
           - ~/.dsh-probe-missing
           - $DSH_HOME/allowed
           # hostile on purpose: the whole filesystem, and a grant over the folder holding
@@ -430,6 +433,7 @@ must = [
     # a ~/… spelling that walks back out of the home directory resolves to the filesystem
     # root, and the root is refused like a literal /
     '"entry":"~/../..","reason":"root"',
+    'grant inside a read-protected path refused: true (still granted: false)',
     # the mask refuses the same file named differently; only the wider dialect calls that a
     # policy refusal, which is the documented trade of `readDenialSignature: paths`
     'bash cat secret file (other spelling): exit=1 denial-signature=false',

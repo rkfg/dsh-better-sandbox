@@ -361,6 +361,17 @@ export default class BetterSandbox extends Service {
       scanRoots: this.collectDirs(this.liveList(config.denyScanRoots), 'denyScanRoots', rejected, 'write'),
       rejected,
     }
+    // A write grant cannot live inside a read-protected path: the mask for the parent hides
+    // the grant, and granting first hides the parent from the mask. The read rule wins —
+    // a grant that has to go is visible and recoverable, a silently readable secret path is
+    // neither — and the dropped grant is reported with the other refusals.
+    const closed = [...lists.readDirs, ...lists.readFiles]
+    lists.roots = lists.roots.filter((root) => {
+      const closedBy = closed.find((path) => isUnder(root, path))
+      if (closedBy === void 0) return true
+      rejected.push({ field: 'writableDirs', entry: root, reason: 'inside-read-denied', path: root, closedBy })
+      return false
+    })
     this.lists = lists
     this.protectedCache.clear()
 

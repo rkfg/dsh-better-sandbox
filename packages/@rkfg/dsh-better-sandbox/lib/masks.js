@@ -61,10 +61,14 @@ export function bwrapGuardArgs(allow, policy, confined, report, applyWriteGuards
   }
   for (const dir of allow.readDirs) {
     if (!existsSync(dir)) continue
-    if (confined.some((root) => isUnder(root, dir))) {
+    // A mask over a root the session works in would take the working directory away, so it
+    // is skipped. A write grant inside a read-protected path is refused earlier, in the rule
+    // lists, which is why the root named here is a working root.
+    const swallowedBy = confined.find((root) => isUnder(root, dir))
+    if (swallowedBy !== void 0) {
       report.warn(
         `swallow-${dir}`,
-        `better-sandbox: a read mask on ${JSON.stringify(dir)} would cover the working directory, so it is skipped — the rule protects nothing while looking as if it did`,
+        `better-sandbox: a read mask on ${JSON.stringify(dir)} would cover the working root ${JSON.stringify(swallowedBy)}, so it is skipped — the rule protects nothing while looking as if it did`,
       )
       continue
     }

@@ -115,7 +115,7 @@ With `@rkfg/dsh-better-sandbox-ui` installed, the Settings dialog gains a **Sand
 | `maskFallback`, `readDenialSignature` | behaviour when the mask cannot be created, and how a masked read is recognized in the output of a command (`paths`, `any`, `off`) | no (restart) |
 | `announceInPrompt` | add the rules to the model context | no (restart) |
 
-Paths accept `~` and `~/…`; `~user` does not expand. A rule that crosses a boundary is refused rather than approximated, and the reason is written to the host log and returned by `sandboxGuard.state()`: `root` (a rule for the whole filesystem), `covers-harness` or `inside-harness` (a rule over, or inside, the files of the harness itself — the mask stubs live in the plugin folder), `covers-workspace` (a read rule that would hide the working directory), `relative`, `segment`, `missing`.
+Paths accept `~` and `~/…`; `~user` does not expand. A rule that crosses a boundary is refused rather than approximated, and the reason is written to the host log and returned by `sandboxGuard.state()`: `root` (a rule for the whole filesystem), `covers-harness` or `inside-harness` (a rule over, or inside, the files of the harness itself — the mask stubs live in the plugin folder), `covers-workspace` (a read rule that would hide the working directory), `inside-read-denied` (a write grant inside a read-protected path — the read rule wins and the grant is refused by name), `relative`, `segment`, `missing`.
 
 ## Verifying
 

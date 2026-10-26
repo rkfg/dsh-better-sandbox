@@ -68,6 +68,17 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
     }
   }
 
+  /** Refuse a write whose canonical path lies in a protected entry, or stay silent. */
+  protectedName(target, displayPath, escalated) {
+    if (escalated || typeof target !== 'string') return
+    const denied = this.allow.deniedSegment(target)
+    if (denied === void 0) return
+    throw new FsError(
+      `cannot write "${displayPath}": "${denied}" is protected by the better-sandbox policy`,
+      'FS_SANDBOX_DENIED',
+    )
+  }
+
   async checkedTarget(target, sandboxPolicy) {
     const policy = sandboxPolicy ?? this.ctx.sandboxPolicy.resolve()
     const allow = this.allow
@@ -78,16 +89,15 @@ export default class BetterSandboxFileSystem extends SandboxedFileSystem {
     const base = escalated ? { ...policy, mode: 'workspace-write' } : policy
     if (base.mode === 'workspace-write' && (allow.roots.length > 0 || allow.denySegments.length > 0)) {
       const fresh = await this.resolve(target.displayPath)
-      const denied = escalated ? void 0 : allow.deniedSegment(fresh.targetKey)
-      if (denied !== void 0) {
-        throw new FsError(
-          `cannot write "${target.displayPath}": "${denied}" is protected by the better-sandbox policy`,
-          'FS_SANDBOX_DENIED',
-        )
-      }
+      this.protectedName(fresh.targetKey, target.displayPath, escalated)
       for (const root of allow.roots) if (isUnder(fresh.targetKey, root)) return fresh
     }
-    return super.checkedTarget(target, base)
+    const checked = await super.checkedTarget(target, base)
+    // The base fence canonicalizes again immediately before the mutation and returns THAT
+    // target — it is the one the write lands on. Checking only the earlier resolve would let
+    // an ancestor symlink swapped in between the two decide which name rule applies.
+    if (base.mode !== 'danger-full-access') this.protectedName(checked?.targetKey, target.displayPath, escalated)
+    return checked
   }
 
   async stat(target, signal) {

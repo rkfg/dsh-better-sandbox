@@ -19,6 +19,18 @@ export async function apply(ctx) {
       } catch (error) {
         console.log('update failed: ' + String(error?.message ?? error).slice(0, 200))
       }
+      // What the settings layer does for this entry, printed rather than assumed. The profile
+      // sets its lists in a patch layer, and a patch override makes the entry read-only through
+      // the settings layer — the page meets the same rejection. The layer checks field paths,
+      // never values, so a rule the host would refuse is a save the layer is happy with.
+      for (const [label, value] of [['a rule for the whole filesystem', ['/']], ['a ~/… spelling that leaves home', ['~/../..']]]) {
+        try {
+          await ctx.settings.update('better-sandbox', { writableDirs: value })
+          console.log(`save ${label}: ACCEPTED — the layer validates paths, not values`)
+        } catch (error) {
+          console.log(`save ${label}: refused by the layer :: ${String(error?.message ?? error).slice(0, 100)}`)
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, 1200))
       console.log('after: readDirs=' + JSON.stringify(ctx.betterSandbox.readDirs))
       for (const [label, file] of [['old directory (no longer read-protected)', 'secretdir/k.txt'], ['new directory (just read-protected)', 'secretdir/nested/k2.txt']]) {

@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# The contour neither pushes nor publishes: the token it is handed should not be able to.
+permissions:
+  contents: read
+
 jobs:
   contour:
     runs-on: ubuntu-latest
@@ -39,6 +43,11 @@ jobs:
 
       - name: Web contour (bundle plus Settings page)
         run: DSH_BUNDLE=1 DSH_UI=1 DSH_PROBE=driver DSH_TEST_TIMEOUT=90 bash scripts/webfull.sh
+
+      # The step above only means something if it can fail: this one injects an entry that
+      # cannot resolve and requires the contour to notice.
+      - name: The web contour gate can fail
+        run: DSH_EXPECT_BOOT_FAILURE=1 DSH_TEST_TIMEOUT=90 bash scripts/webfull.sh
 
       - name: Page boot and settings section checks
         run: |

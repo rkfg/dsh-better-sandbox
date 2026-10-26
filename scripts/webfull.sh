@@ -103,6 +103,11 @@ if (probes[probe] !== void 0) {
   fs.copyFileSync(path.join(root, 'test', file), path.join(prof, 'better-sandbox', file))
   rows.push('- insert:', `    - id: ${probes[probe]}`, `      name: ./better-sandbox/${file}`)
 }
+// The gate below is only worth having if it can fail. This injects an entry that cannot
+// resolve, which is what a broken patch layer looks like in a real profile.
+if (process.env.DSH_EXPECT_BOOT_FAILURE === '1') {
+  rows.push('- insert:', '    - id: better-sandbox-unresolvable', '      name: ./better-sandbox/no-such-module.js')
+}
 fs.writeFileSync(path.join(prof, 'cordis.patch.yml'), `${rows.join('\n')}\n`)
 NODE
 
@@ -122,6 +127,45 @@ fi
 
 log="$DSH_HOME/logs/webfull-boot.log"
 (cd "$DSH_HOME/run" && timeout "${DSH_TEST_TIMEOUT:-30}" dsh --profile webfull --port "$port" --no-open) >"$log" 2>&1
+boot=$?
 echo "=== startup problems ==="
 grep -inE "startup failed|did not activate|client-modules|pending \(waiting|failed to import|already declared|Error:" "$log" | head -12
-echo "=== total: $(grep -cE 'startup failed|did not activate|failed to import' "$log") problems ==="
+problems=$(grep -cE 'startup failed|did not activate|failed to import|pending \(waiting|client-modules' "$log")
+echo "=== total: $problems problems, process exit $boot ==="
+
+# A contour that cannot fail is a contour that never runs. Until now this script ended on an
+# `echo`, so a web profile whose entry never activated — or a missing `dsh` — still turned the
+# CI step green. 124 is the timeout that ends a boot with no probe, which is a clean run.
+if [[ ${DSH_EXPECT_BOOT_FAILURE:-0} == 1 ]]; then
+  # The gate's own check: an entry that cannot resolve has to be reported, or every assertion
+  # above is decoration.
+  if [[ $problems == 0 && $boot == 0 ]]; then
+    echo "the injected broken entry went unnoticed: the gate cannot fail"
+    exit 1
+  fi
+  echo "injected failure detected: $problems problem(s), process exit $boot"
+  exit 0
+fi
+if [[ $boot != 0 && $boot != 124 ]]; then
+  echo "the profile process failed with exit $boot"
+  exit 1
+fi
+if [[ $problems != 0 ]]; then
+  echo "the web profile did not come up clean"
+  exit 1
+fi
+
+# The probes run inside the booted profile and print what the web half actually does. Their
+# markers are asserted, not read: a client entry that mounts but does nothing looks identical
+# to a working one in a log nobody parses.
+case "${DSH_PROBE:-}" in
+  settings-write) expected=('page present=true' 'update failed: Configuration for "better-sandbox" is overridden' 'refused by the layer' 'read old directory (no longer read-protected): DENIED' 'read new directory (just read-protected): DENIED') ;;
+  driver) expected=('fs write allowed dir: WROTE' 'fs write .git: DENIED FS_SANDBOX_DENIED' 'readDenyDirs: [' 'escalation level: "write-segment"') ;;
+  *) expected=() ;;
+esac
+if [[ ${#expected[@]} -gt 0 ]]; then
+  for marker in "${expected[@]}"; do
+    grep -qF -- "$marker" "$log" || { echo "the ${DSH_PROBE} probe never printed: $marker"; exit 1; }
+  done
+  echo "probe markers: all ${#expected[@]} present"
+fi

@@ -1,6 +1,6 @@
 {
   "name": "@rkfg/dsh-better-sandbox",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "Sandbox rules for DeepSeek Harness: extra writable roots, write-protected path names with a narrow escalation level for them, read-protected paths.",
   "dsh": {

@@ -50,7 +50,7 @@ Protected reads fail closed: the mask is a real mount point with mode `000`, and
 ## Requirements
 
 - Linux with unprivileged user namespaces and [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap --version`).
-- DeepSeek Harness `0.2.1-rc.2`. The dependency versions in both packages are pinned to it on purpose: the `latest` dist-tag of the `@deepseek-ai/*` family points at an old `0.0.1-rc.1`, and the plugin depends on internal provider behaviour that changed between releases.
+- DeepSeek Harness `0.2.1-rc.5`. The dependency versions in both packages are pinned to it on purpose: the `latest` dist-tag of the `@deepseek-ai/*` family points at an old `0.0.1-rc.1`, and the plugin depends on internal provider behaviour that changed between releases.
 
 ## Install
 

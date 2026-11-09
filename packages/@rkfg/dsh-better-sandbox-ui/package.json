@@ -26,7 +26,7 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "4.0.5"
+    "@deepseek-ai/cordis": "4.1.0"
   },
   "icon": "./icon.svg",
   "files": [
